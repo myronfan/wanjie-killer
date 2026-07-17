@@ -1,0 +1,10 @@
+node_modules/
+dist/
+release/
+.vite/
+*.log
+.DS_Store
+*.local
+.cache/
+build/
+out/
