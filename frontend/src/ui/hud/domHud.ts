@@ -45,6 +45,20 @@ export function createHud(
       <kbd>Esc</kbd> 关闭对话
     </div>
 
+    <div class="hud-interaction" id="hud-interaction" style="display:none">
+      <span class="hud-interaction-icon">📋</span>
+      <span class="hud-interaction-label" id="hud-interaction-label">互动</span>
+      <span class="hud-interaction-key">按 <kbd>E</kbd> 查看</span>
+    </div>
+
+    <div class="hud-info-panel" id="hud-info-panel" style="display:none">
+      <div class="hud-info-panel-header">
+        <span id="hud-info-panel-title"></span>
+        <button class="hud-info-panel-close" id="hud-info-panel-close">×</button>
+      </div>
+      <div class="hud-info-panel-body" id="hud-info-panel-body"></div>
+    </div>
+
     <div class="hud-dialogue" id="hud-dialogue" style="display:none">
       <div class="hud-dialogue-header">
         <span id="hud-dialogue-name"></span>
@@ -94,13 +108,63 @@ export function createHud(
   // 对话关闭
   dialogueClose!.addEventListener("click", () => simulation.closeDialogue());
 
-  // 对话发送
-  dialogueForm!.addEventListener("submit", (e) => {
-    e.preventDefault();
+  // 对话发送：捕获 Enter 键，避免被 Phaser 全局 keyboard 拦截
+  const handleSend = (e?: Event): void => {
+    if (e) e.preventDefault();
     const text = dialogueInput!.value;
     if (!text.trim()) return;
     void simulation.sendMessage(text);
     dialogueInput!.value = "";
+  };
+
+  // 表单 submit（点击发送按钮时触发）
+  dialogueForm!.addEventListener("submit", (e) => {
+    handleSend(e);
+  });
+
+  // 输入框 keydown：单独拦截 Enter，避免 Phaser 抢走
+  dialogueInput!.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      handleSend();
+    }
+  });
+
+  // 互动面板关闭按钮
+  const infoPanel = root.querySelector<HTMLDivElement>("#hud-info-panel");
+  const infoPanelTitle = root.querySelector<HTMLSpanElement>("#hud-info-panel-title");
+  const infoPanelBody = root.querySelector<HTMLDivElement>("#hud-info-panel-body");
+  const infoPanelClose = root.querySelector<HTMLButtonElement>("#hud-info-panel-close");
+  let infoPanelOpenId: string | null = null;
+
+  infoPanelClose!.addEventListener("click", () => {
+    infoPanelOpenId = null;
+    infoPanel!.style.display = "none";
+  });
+
+  // 按 E 互动：先看有没有 nearbyInteraction
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "e" && e.key !== "E" && e.key !== "Enter") return;
+    // 如果输入框聚焦，跳过
+    const active = document.activeElement;
+    if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+    e.preventDefault();
+
+    const interaction = simulation.getNearbyInteraction();
+    if (interaction && (!infoPanelOpenId || infoPanelOpenId !== interaction.id)) {
+      infoPanelOpenId = interaction.id;
+      if (infoPanelTitle) infoPanelTitle.textContent = interaction.title;
+      if (infoPanelBody) infoPanelBody.textContent = interaction.body;
+      if (infoPanel) infoPanel.style.display = "flex";
+    } else if (infoPanelOpenId) {
+      // 关闭
+      infoPanelOpenId = null;
+      if (infoPanel) infoPanel.style.display = "none";
+    } else {
+      // 没面板就尝试开 NPC 对话
+      simulation.startDialogueWithNearbyNpc();
+    }
   });
 
   // 订阅 simulation 更新
@@ -128,6 +192,19 @@ export function createHud(
     npcsContainer!.querySelectorAll<HTMLButtonElement>(".hud-npc-btn").forEach((btn) => {
       btn.classList.toggle("is-nearby", btn.dataset.npcId === nearbyId);
     });
+
+    // 互动对象提示
+    const interactionEl = root.querySelector<HTMLDivElement>("#hud-interaction");
+    const interactionLabel = root.querySelector<HTMLSpanElement>("#hud-interaction-label");
+    const interaction = simulation.getNearbyInteraction();
+    if (interactionEl) {
+      if (interaction && !state.dialogue.open) {
+        interactionEl.style.display = "flex";
+        if (interactionLabel) interactionLabel.textContent = interaction.title;
+      } else {
+        interactionEl.style.display = "none";
+      }
+    }
 
     // 对话框
     if (state.dialogue.open && state.dialogue.npcId) {

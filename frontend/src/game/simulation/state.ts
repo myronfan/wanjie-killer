@@ -17,6 +17,7 @@ export interface PlayerState {
   facing: FacingDirection;
   animation: ActorAnimationKey;
   nearbyNpcId: string | null;
+  nearbyInteractionId: string | null;
   isInteracting: boolean;
 }
 

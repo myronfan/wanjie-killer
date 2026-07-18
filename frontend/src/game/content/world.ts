@@ -23,6 +23,8 @@ export interface RectObstacle {
     | "water"
     | "plant";
   label?: string;
+  /** 互动内容（按 E 时显示） */
+  interaction?: { title: string; body: string };
 }
 
 const centeredRect = (
@@ -62,7 +64,13 @@ export const WORLD_CONFIG = {
     centeredRect("workstation-wall-1", 240, 200, 360, 16, "wall", "工位区隔板"),
     centeredRect("workstation-wall-2", 240, 280, 360, 16, "wall"),
     centeredRect("workstation-room-wall", 240, 100, 360, 12, "wall"),
-    centeredRect("board-1", 480, 220, 60, 40, "board", "公告栏"),
+    {
+  ...centeredRect("board-1", 480, 220, 60, 40, "board", "公告栏"),
+  interaction: {
+    title: "📋 完结小镇公告栏",
+    body: "欢迎来到完结小镇！这里住着来自各大网文的角色。\n\n今日活动：\n• 林动在工位区修炼\n• 萧炎在会议室炼药\n• 王五在休息区休息\n\n按 ESC 关闭",
+  },
+},
     centeredRect("desk-1", 130, 220, 50, 30, "furniture", "工位1"),
     centeredRect("desk-2", 230, 220, 50, 30, "furniture", "工位2"),
     centeredRect("desk-3", 330, 220, 50, 30, "furniture", "工位3"),
@@ -72,14 +80,26 @@ export const WORLD_CONFIG = {
     // ============ 右上：会议室 ============
     centeredRect("meeting-room-wall", 1000, 200, 360, 12, "wall", "会议室墙"),
     centeredRect("meeting-table", 1000, 230, 200, 50, "furniture", "会议桌"),
-    centeredRect("meeting-whiteboard", 1180, 130, 60, 30, "board", "白板"),
+    {
+  ...centeredRect("meeting-whiteboard", 1180, 130, 60, 30, "board", "白板"),
+  interaction: {
+    title: "📝 会议室白板",
+    body: "下次会议议题：\n1. 网文角色发展路线\n2. 新功能开发计划\n3. Build AI 接入方案",
+  },
+},
     centeredRect("meeting-door-left", 870, 280, 6, 30, "door"),
     centeredRect("meeting-door-right", 1130, 280, 6, 30, "door"),
 
     // ============ 下半部分：休息区 ============
     centeredRect("sofa-1", 200, 580, 80, 30, "furniture", "沙发"),
     centeredRect("sofa-2", 320, 580, 80, 30, "furniture", "沙发"),
-    centeredRect("coffee-machine", 480, 580, 40, 30, "furniture", "咖啡机"),
+    {
+  ...centeredRect("coffee-machine", 480, 580, 40, 30, "furniture", "咖啡机"),
+  interaction: {
+    title: "☕ 咖啡机",
+    body: "投币 5 元可获得一杯热咖啡。\n\n（功能开发中）",
+  },
+},
     centeredRect("bookshelf-1", 1100, 580, 30, 100, "furniture", "书架"),
     centeredRect("bookshelf-2", 1140, 580, 30, 100, "furniture", "书架"),
     centeredRect("planter", 640, 400, 80, 40, "plant", "花坛"),

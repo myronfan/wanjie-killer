@@ -84,9 +84,8 @@ export class TownScene extends Phaser.Scene {
 
     const dialogueWasOpen = this.simulation.getState().dialogue.open;
 
-    if (this.bindings.consumeInteractPressed()) {
-      this.simulation.startDialogueWithNearbyNpc();
-    }
+    // 互动（E/Enter）改在 domHud.ts 里通过 document.addEventListener 处理
+    // 这里只处理 WASD/方向键/Shift/Esc
 
     this.simulation.setMoveIntent(this.bindings.readMoveIntent());
     this.simulation.setRunMultiplier(this.bindings.isRunning() ? 1.7 : 1);

@@ -70,6 +70,7 @@ export class TownSimulation {
         facing: "down",
         animation: "idle",
         nearbyNpcId: null,
+        nearbyInteractionId: null,
         isInteracting: false,
       },
       npcs: Object.fromEntries(
@@ -116,7 +117,7 @@ export class TownSimulation {
     this.updatePlayer(deltaMs);
     this.updateNpcs(deltaMs);
 
-    const nearbyChanged = this.refreshNearbyNpc();
+    const nearbyChanged = this.refreshNearbyNpc() || this.refreshNearbyInteraction();
     const countdownSeconds = Math.max(
       0,
       Math.ceil((this.state.backend.nextStatusRefreshAt - this.state.time) / 1000),
@@ -510,6 +511,41 @@ export class TownSimulation {
       return true;
     }
     return false;
+  }
+
+  private refreshNearbyInteraction(): boolean {
+    const player = this.state.player;
+    let nearestId: string | null = null;
+    const range = WORLD_CONFIG.interactionDistance + 30;
+
+    for (const obstacle of WORLD_CONFIG.obstacles) {
+      if (!obstacle.interaction) continue;
+      // 计算玩家到 obstacle 中心的距离
+      const cx = obstacle.x + obstacle.width / 2;
+      const cy = obstacle.y + obstacle.height / 2;
+      const d = Math.hypot(player.position.x - cx, player.position.y - cy);
+      // 减去障碍半径估算（取宽高较大的一半）
+      const r = Math.max(obstacle.width, obstacle.height) / 2;
+      if (d - r < range) {
+        nearestId = obstacle.id;
+        break;
+      }
+    }
+
+    if (player.nearbyInteractionId !== nearestId) {
+      player.nearbyInteractionId = nearestId;
+      return true;
+    }
+    return false;
+  }
+
+  /** 获取附近可互动对象的内容 */
+  getNearbyInteraction(): { id: string; title: string; body: string } | null {
+    const id = this.state.player.nearbyInteractionId;
+    if (!id) return null;
+    const obstacle = WORLD_CONFIG.obstacles.find((o) => o.id === id);
+    if (!obstacle?.interaction) return null;
+    return { id: obstacle.id, ...obstacle.interaction };
   }
 
   private notify(): void {
