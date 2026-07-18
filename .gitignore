@@ -1,18 +1,15 @@
+# Python
+frontend/venv/
+frontend/**/__pycache__/
+frontend/**/*.pyc
+frontend/results/checkpoints/
+frontend/results/compressed/
+*.log
+
+# Node（历史）
 node_modules/
 dist/
-release/
-.vite/
-*.log
+
+# 系统
 .DS_Store
-*.local
-.cache/
-build/
-out/
-.idea/
-.vscode/
-docs/references/
-frontend/node_modules/
-frontend/dist/
-frontend/release/
-frontend/.vite/
-frontend/*.log
+*.swp

@@ -1,123 +1,150 @@
-# 完结杀手 (Project Unfinished)
+简体中文 | [English](./README_en.md)
 
-> **自演化虚拟小镇**——星露谷物语风格的 2D 世界,网文角色作为 Agent 在其中生活、互动、创作。
-> 通过 Build AI(LLM + 图像生成 + 代码生成)自主演化,无需人类干预即可无限发展。
+# 生成式智能体（Generative Agents）深度汉化版
 
-🌐 [开发计划](./开发计划.md) · [参考项目分析](./docs/analysis/reference-projects-analysis.md) · [实施路线](./docs/analysis/implementation-roadmap.md) · [GitHub 仓库](https://github.com/myronfan/wanjie-killer)
+斯坦福AI小镇由斯坦福大学和谷歌于2023年8月开源，由25个智能体组成的虚拟世界，模拟了真实的人类生活。
 
----
+25个智能体完全由ChatGPT驱动，自主组织派对、参加会议、在情人节筹办各种活动。他们能够展现出与人类相似的生活模式和行为习惯。
 
-## 📊 当前进度
+Generative Agents的原始代码工程化程度较低，难以持续维护或拓展功能，且时隔两年，中文LLM的能力早已胜任此类任务。因此，我们对原项目进行了重构+深度汉化，旨在为中文用户提供一个利于维护的基础版本，以便后续实验或尝试更多玩法。
 
-### Phase 1: 前端 V0.1 ✅ 80%
+[wounderland](https://github.com/Archermmt/wounderland)项目是原[Generative Agents](https://github.com/joonspk-research/generative_agents)项目的重构版本，结构良好且代码质量远优于原版，因此本项目基于wounderland开发。
 
-- ✅ React + Vite + PixiJS + TypeScript 前端（1258 行代码）
-- ✅ 星露谷风格 2D 虚拟小镇（程序化绘制）
-- ✅ 4 方向 × 6 帧动画（175ms 帧间隔，从星露谷反编译提取）
-- ✅ WASD 角色控制 + Shift 跑步 + 撞墙检测
-- ✅ 摄像机跟随 + 时间系统（4 套色调叠加）
-- ✅ TypeScript 编译通过 + Vite 生产构建成功
-- ⏳ GitHub Pages Web 部署（明天做）
-- ⏳ Electron 桌面打包（暂缓，服务器下载二进制卡住）
+更新：
 
-### 最近更新：2026-07-17
+- 2025.06.02
+    - 增加对`Qwen3`和`DeepSeek-R1`等新模型的支持（处理输出结果中的\<think\>标签）。
+- 2026.01.15
+    - 使用`pydantic`模型取代正则表达式解析。感谢[Findworth](https://github.com/Findworth)提交的PR。
+    - 默认语言模型改为`qwen3:4b-instruct-2507`，嵌入模型改为`qwen3-embedding:0.6b`，减少显存占用，提升推理速度。
 
-前端 V0.1 完成。详细进度见 [开发计划 § 进度日志](./开发计划.md#附录进度日志)。
+主要工作：
 
----
+- 重写全部提示语，将智能体的“母语”切换为中文，以便对接Qwen或GLM-4等中文模型；
+- 针对中文特点和Qwen2.5/3系列模型的能力，优化中文提示语及智能体之间的对话起止逻辑；
+- 所有提示语模板化，便于后期维护；
+- 修正原版的小问题（例如wounderland原版中智能体在入睡后便不再醒来）；
+- 增加对本地Ollama API的支持，同时将LlamaIndex embedding也接入Ollama，实现完全本地部署，降低实验成本。*Ollama安装及配置可参考[ollama.md](docs/ollama.md)*；
+- 增加“断点恢复”等特性；
+- 回放界面基于原Generative Agents前端代码精简，同时将智能体活动的时间线及对话内容保存至Markdown文档。
 
-## 🎮 试玩方式（部署后）
+回放画面：
 
-部署完成后，访问：
+![snapshot](docs/resources/snapshot.png)
 
-> 👉 **`https://myronfan.github.io/wanjie-killer/`**
+*注：地图及人物名称也同步汉化，是为了避免LLM在遇到中英混杂的上下文时，切换到英文语境。*
 
-**操作**：
+## 1. 准备工作
 
-- **WASD / 方向键**：移动角色
-- **Shift**：跑步（2 倍速度）
-- **E**：互动（暂未实现）
-- **空格**：暂停（暂未实现）
-
----
-
-## 🛠️ 技术栈
-
-| 维度 | 技术 |
-|------|------|
-| 前端 | React + TypeScript + Vite + PixiJS |
-| 后端 | Spring Boot + Java（V6.4.1 已完成，V_final 升级中） |
-| LLM | MiniMax（M2.7 / M2.7-highspeed） |
-| 渲染 | pixi.js（WebGL 加速 2D 渲染） |
-| 资源 | OpenGameArt CC0 资源（暂用程序化绘制） |
-| 部署 | GitHub Pages（Web 版）+ Electron（桌面版，暂缓） |
-
----
-
-## 📁 项目结构
+### 1.1 获取代码：
 
 ```
-完结杀手/
-├── 开发计划.md                       # ⭐ 主开发计划（1032 行）
-├── README.md                          # 本文件
-├── .gitignore
-├── docs/
-│   ├── analysis/
-│   │   ├── reference-projects-analysis.md   # 参考项目分析（796 行）
-│   │   └── implementation-roadmap.md        # 实施路线（383 行）
-│   └── references/
-│       ├── AI-Town/                # 参考:RemyFinn/AI-Town
-│       └── StardewValleyDecompiled/   # 参考:星露谷反编译
-└── frontend/                        # ⭐ 前端代码
-    ├── src/                         # 源代码（1258 行）
-    │   ├── core/                    # 核心系统（8 个模块）
-    │   ├── components/              # Pixi 组件
-    │   ├── hooks/                   # React hooks
-    │   ├── styles/                  # Tailwind 样式
-    │   ├── App.tsx                  # 主应用
-    │   └── main.tsx                 # React 入口
-    ├── electron/                    # Electron 配置（待启用）
-    ├── public/                      # 静态资源
-    ├── assets/                      # 像素资源
-    ├── index.html                   # HTML 入口
-    ├── package.json                 # npm 配置
-    ├── vite.config.ts               # Vite 配置
-    ├── tsconfig.json                # TS 配置
-    ├── tailwind.config.js           # Tailwind 配置
-    └── Makefile                     # 懒人命令集
+git clone https://github.com/x-glacier/GenerativeAgentsCN.git
+cd GenerativeAgentsCN
 ```
 
----
+### 1.2 配置大语言模型（LLM）
 
-## 📚 参考项目
+修改配置文件 `generative_agents/data/config.json`:
+1. 默认使用[Ollama](https://ollama.com/)加载本地量化模型，并提供OpenAI兼容API。需要先拉取量化模型（参考[ollama.md](docs/ollama.md)），并确保`base_url`和`model`与Ollama中的配置一致。
+2. 如果希望调用其他OpenAI兼容API，需要将`provider`改为`openai`，并根据API文档修改`model`、`api_key`和`base_url`。
 
-| 项目 | 协议 | 用途 |
-|------|------|------|
-| [a16z-infra/ai-town](https://github.com/a16z-infra/ai-town) | MIT | Agent 架构 + PixiJS 渲染参考 |
-| [RemyFinn/AI-Town](https://github.com/RemyFinn/AI-Town) | None | NPC 配置思路 |
-| [Dannode36/StardewValleyDecompiled](https://github.com/Dannode36/StardewValleyDecompiled) | None | 星露谷动画原理 |
+### 1.3 安装python依赖
 
----
+建议先使用anaconda3创建并激活虚拟环境：
 
-## 🎨 像素资源来源
+```
+conda create -n generative_agents_cn python=3.12
+conda activate generative_agents_cn
+```
 
-所有像素资源来自 OpenGameArt（CC0 协议）：
+安装依赖：
 
-- [16x16 Game Assets by George Bailey](https://opengameart.org/content/16x16-game-assets)
-- [16x16 RPG Tileset by hilau](https://opengameart.org/content/16x16-rpg-tileset)
-- [Tiny RPG Forest by ansimuz](https://opengameart.org/content/tiny-rpg-forest)
-- [Pixel Art GUI by Mounir Tohami](https://mounirtohami.itch.io/pixel-art-gui-elements)
+```
+pip install -r requirements.txt
+```
 
-> ⚠️ **当前版本使用程序化绘制**（保证先跑通流程），后续将替换为真实 OpenGameArt 资源。
+## 2. 运行虚拟小镇
 
----
+```
+cd generative_agents
+python start.py --name sim-test --start "20250213-09:30" --step 10 --stride 10
+```
 
-## 🎓 学术参考
+参数说明:
+- `name` - 每次启动虚拟小镇，需要设定唯一的名称，用于事后回放。
+- `start` - 虚拟小镇的起始时间。
+- `resume` - 在运行结束或意外中断后，从上次的“断点”处，继续运行虚拟小镇。
+- `step` - 在迭代多少步之后停止运行。
+- `stride` - 每一步迭代在虚拟小镇中对应的时间（分钟）。假如设定`--stride 10`，虚拟小镇在迭代过程中的时间变化将会是 9:00，9:10，9:20 ...
 
-- [Generative Agents: Interactive Simulacra of Human Behavior](https://arxiv.org/abs/2304.03442)
+## 3. 回放
 
----
+### 3.1 生成回放数据
 
-## 📜 许可
+```
+python compress.py --name sim-test
+```
 
-本项目代码 MIT 协议。参考项目代码遵循各自原协议。
+运行结束后将在`results/compressed/sim-test`目录下生成回放数据文件`movement.json`。同时还将生成`simulation.md`，以时间线方式呈现每个智能体的状态及对话内容。
+
+### 3.2 启动回放服务
+
+```
+python replay.py
+```
+
+通过浏览器打开回放页面（地址：`http://127.0.0.1:5000/?name=sim-test` ），可以看到虚拟小镇中的居民在各个时间段的活动。
+
+*只能通过键盘方向键移动画面*
+
+参数说明  
+- `name` - 启动虚拟小镇时设定的名称。
+- `step` - 回放的起始步数，0代表从第一帧开始回放，预设值为0。
+- `speed` - 回放速度（0-5），0最慢，5最快，预设值为2。
+- `zoom` - 画面缩放比例，预设值为0.8。
+
+发布版本中内置了名为`example`的回放数据（由qwen2.5:32b-instruct-q4_K_M生成）。若希望以较快速度从头开始回放，画面缩放比例为0.6，则对应的url是：
+http://127.0.0.1:5000/?name=example&step=0&speed=2&zoom=0.6
+
+也可直接打开[simulation.md](generative_agents/results/compressed/example/simulation.md)，查看`example`中所有人物活动和对话信息。
+
+### 3.3 回放截图
+
+*画面中对话内容由qwen2.5:14b-instruct-q4_K_M生成*
+
+小镇全景
+
+![小镇全景](docs/resources/snapshot1.gif)
+
+公园
+
+![公园](docs/resources/snapshot2.gif)
+
+咖啡馆
+
+![咖啡馆](docs/resources/snapshot3.gif)
+
+教室
+
+![教室](docs/resources/snapshot4.gif)
+
+## 4. 修改地图
+
+由于wounderland项目原作者没有提供maze.json的生成代码，所以想要创建新地图，有以下几种方案：
+
+1. 参考原始generative_agents项目中maze.py的逻辑，修改现有代码，以便兼容tiled编辑器导出的json和csv数据文件；
+2. 参考现有的maze.json格式，编写代码用于合并tiled编辑器导出的maze_meta_info.json、collision_maze.csv、sector_maze.csv等文件，为新地图生成maze.json。
+3. `jiejieje`已为本项目开发了一款地图标注工具，项目地址：https://github.com/jiejieje/tiled_to_maze.json
+
+## 5. 参考资料
+
+### 5.1 论文
+
+[Generative Agents: Interactive Simulacra of Human Behavior](https://arxiv.org/abs/2304.03442)
+
+### 5.2 代码
+
+[Generative Agents](https://github.com/joonspk-research/generative_agents)
+
+[wounderland](https://github.com/Archermmt/wounderland)
