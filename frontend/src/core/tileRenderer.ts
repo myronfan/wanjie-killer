@@ -2,7 +2,9 @@
  * 瓦片渲染器
  *
  * 用 Graphics 程序化绘制各种瓦片
- * 之后可以替换为 sprite sheet 渲染
+ *
+ * 修复历史：
+ * - 2026-07-18: 修复所有 beginFill 都有对应 endFill，确保颜色不串
  */
 
 import { Graphics } from 'pixi.js';
@@ -19,11 +21,9 @@ function drawTile(g: Graphics, type: TileType, px: number, py: number): void {
 
   switch (type) {
     case 'grass':
-      // 草地
       g.beginFill(PALETTE.grass_spring[0]);
       g.drawRect(px, py, TILE_SIZE * SCALE, TILE_SIZE * SCALE);
       g.endFill();
-      // 装饰：随机小草
       g.beginFill(PALETTE.grass_spring[1], 0.6);
       for (let i = 0; i < 3; i++) {
         const sx = px + ((px * 7 + i * 13) % (TILE_SIZE * SCALE - 4)) + 2;
@@ -37,7 +37,6 @@ function drawTile(g: Graphics, type: TileType, px: number, py: number): void {
       g.beginFill(PALETTE.grass_spring[0]);
       g.drawRect(px, py, TILE_SIZE * SCALE, TILE_SIZE * SCALE);
       g.endFill();
-      // 高草丛
       g.beginFill(PALETTE.grass_summer[0]);
       for (let i = 0; i < 4; i++) {
         const sx = px + ((px * 7 + i * 11) % (TILE_SIZE * SCALE - 6)) + 3;
@@ -60,8 +59,7 @@ function drawTile(g: Graphics, type: TileType, px: number, py: number): void {
       g.endFill();
       break;
 
-    case 'path_h':
-      // 横向路径
+    case 'path_horizontal':
       g.beginFill(PALETTE.wood_light[0]);
       g.drawRect(px, py, TILE_SIZE * SCALE, TILE_SIZE * SCALE);
       g.endFill();
@@ -71,7 +69,7 @@ function drawTile(g: Graphics, type: TileType, px: number, py: number): void {
       g.endFill();
       break;
 
-    case 'path_v':
+    case 'path_vertical':
       g.beginFill(PALETTE.wood_light[0]);
       g.drawRect(px, py, TILE_SIZE * SCALE, TILE_SIZE * SCALE);
       g.endFill();
@@ -81,17 +79,119 @@ function drawTile(g: Graphics, type: TileType, px: number, py: number): void {
       g.endFill();
       break;
 
+    case 'path_cross':
+      g.beginFill(PALETTE.wood_light[0]);
+      g.drawRect(px, py, TILE_SIZE * SCALE, TILE_SIZE * SCALE);
+      g.endFill();
+      // 横向路径
+      g.beginFill(PALETTE.wood[0], 0.4);
+      g.drawRect(px, py + TILE_SIZE * SCALE * 0.4, TILE_SIZE * SCALE, TILE_SIZE * SCALE * 0.2);
+      g.endFill();
+      // 纵向路径
+      g.beginFill(PALETTE.wood[0], 0.4);
+      g.drawRect(px + TILE_SIZE * SCALE * 0.4, py, TILE_SIZE * SCALE * 0.2, TILE_SIZE * SCALE);
+      g.endFill();
+      break;
+
+    case 'path_corner_tl':
+      g.beginFill(PALETTE.wood_light[0]);
+      g.drawRect(px, py, TILE_SIZE * SCALE, TILE_SIZE * SCALE);
+      g.endFill();
+      g.beginFill(PALETTE.wood[0], 0.4);
+      g.drawRect(px, py + TILE_SIZE * SCALE * 0.5, TILE_SIZE * SCALE * 0.5, TILE_SIZE * SCALE * 0.2);
+      g.drawRect(px + TILE_SIZE * SCALE * 0.4, py, TILE_SIZE * SCALE * 0.2, TILE_SIZE * SCALE * 0.5);
+      g.endFill();
+      break;
+
+    case 'path_corner_tr':
+      g.beginFill(PALETTE.wood_light[0]);
+      g.drawRect(px, py, TILE_SIZE * SCALE, TILE_SIZE * SCALE);
+      g.endFill();
+      g.beginFill(PALETTE.wood[0], 0.4);
+      g.drawRect(px + TILE_SIZE * SCALE * 0.5, py + TILE_SIZE * SCALE * 0.5, TILE_SIZE * SCALE * 0.5, TILE_SIZE * SCALE * 0.2);
+      g.drawRect(px + TILE_SIZE * SCALE * 0.4, py, TILE_SIZE * SCALE * 0.2, TILE_SIZE * SCALE * 0.5);
+      g.endFill();
+      break;
+
+    case 'path_corner_bl':
+      g.beginFill(PALETTE.wood_light[0]);
+      g.drawRect(px, py, TILE_SIZE * SCALE, TILE_SIZE * SCALE);
+      g.endFill();
+      g.beginFill(PALETTE.wood[0], 0.4);
+      g.drawRect(px, py + TILE_SIZE * SCALE * 0.5, TILE_SIZE * SCALE * 0.5, TILE_SIZE * SCALE * 0.2);
+      g.drawRect(px + TILE_SIZE * SCALE * 0.4, py + TILE_SIZE * SCALE * 0.5, TILE_SIZE * SCALE * 0.2, TILE_SIZE * SCALE * 0.5);
+      g.endFill();
+      break;
+
+    case 'path_corner_br':
+      g.beginFill(PALETTE.wood_light[0]);
+      g.drawRect(px, py, TILE_SIZE * SCALE, TILE_SIZE * SCALE);
+      g.endFill();
+      g.beginFill(PALETTE.wood[0], 0.4);
+      g.drawRect(px + TILE_SIZE * SCALE * 0.5, py + TILE_SIZE * SCALE * 0.5, TILE_SIZE * SCALE * 0.5, TILE_SIZE * SCALE * 0.2);
+      g.drawRect(px + TILE_SIZE * SCALE * 0.4, py + TILE_SIZE * SCALE * 0.5, TILE_SIZE * SCALE * 0.2, TILE_SIZE * SCALE * 0.5);
+      g.endFill();
+      break;
+
+    case 'path_t':
+      // T 形朝上（横向 + 上半纵向）
+      g.beginFill(PALETTE.wood_light[0]);
+      g.drawRect(px, py, TILE_SIZE * SCALE, TILE_SIZE * SCALE);
+      g.endFill();
+      g.beginFill(PALETTE.wood[0], 0.4);
+      g.drawRect(px, py + TILE_SIZE * SCALE * 0.5, TILE_SIZE * SCALE, TILE_SIZE * SCALE * 0.2);
+      g.drawRect(px + TILE_SIZE * SCALE * 0.4, py, TILE_SIZE * SCALE * 0.2, TILE_SIZE * SCALE * 0.5);
+      g.endFill();
+      break;
+
+    case 'path_t_down':
+      g.beginFill(PALETTE.wood_light[0]);
+      g.drawRect(px, py, TILE_SIZE * SCALE, TILE_SIZE * SCALE);
+      g.endFill();
+      g.beginFill(PALETTE.wood[0], 0.4);
+      g.drawRect(px, py + TILE_SIZE * SCALE * 0.3, TILE_SIZE * SCALE, TILE_SIZE * SCALE * 0.2);
+      g.drawRect(px + TILE_SIZE * SCALE * 0.4, py + TILE_SIZE * SCALE * 0.5, TILE_SIZE * SCALE * 0.2, TILE_SIZE * SCALE * 0.5);
+      g.endFill();
+      break;
+
+    case 'path_t_left':
+      g.beginFill(PALETTE.wood_light[0]);
+      g.drawRect(px, py, TILE_SIZE * SCALE, TILE_SIZE * SCALE);
+      g.endFill();
+      g.beginFill(PALETTE.wood[0], 0.4);
+      g.drawRect(px, py + TILE_SIZE * SCALE * 0.5, TILE_SIZE * SCALE * 0.5, TILE_SIZE * SCALE * 0.2);
+      g.drawRect(px + TILE_SIZE * SCALE * 0.5, py + TILE_SIZE * SCALE * 0.4, TILE_SIZE * SCALE * 0.5, TILE_SIZE * SCALE * 0.2);
+      g.endFill();
+      break;
+
+    case 'path_t_right':
+      g.beginFill(PALETTE.wood_light[0]);
+      g.drawRect(px, py, TILE_SIZE * SCALE, TILE_SIZE * SCALE);
+      g.endFill();
+      g.beginFill(PALETTE.wood[0], 0.4);
+      g.drawRect(px + TILE_SIZE * SCALE * 0.5, py + TILE_SIZE * SCALE * 0.5, TILE_SIZE * SCALE * 0.5, TILE_SIZE * SCALE * 0.2);
+      g.drawRect(px, py + TILE_SIZE * SCALE * 0.4, TILE_SIZE * SCALE * 0.5, TILE_SIZE * SCALE * 0.2);
+      g.endFill();
+      break;
+
+    case 'path_end':
+      g.beginFill(PALETTE.wood_light[0]);
+      g.drawRect(px, py, TILE_SIZE * SCALE, TILE_SIZE * SCALE);
+      g.endFill();
+      g.beginFill(PALETTE.wood[0], 0.4);
+      g.drawRect(px + TILE_SIZE * SCALE * 0.3, py + TILE_SIZE * SCALE * 0.3, TILE_SIZE * SCALE * 0.4, TILE_SIZE * SCALE * 0.4);
+      g.endFill();
+      break;
+
     case 'water':
       g.beginFill(PALETTE.water[0]);
       g.drawRect(px, py, TILE_SIZE * SCALE, TILE_SIZE * SCALE);
       g.endFill();
-      // 水波纹
       g.beginFill(PALETTE.water[1], 0.5);
       g.drawRect(px + 4, py + 6, 8, 1);
       g.drawRect(px + 16, py + 10, 6, 1);
       g.drawRect(px + 8, py + 22, 6, 1);
       g.endFill();
-      // 高光
       g.beginFill(PALETTE.water[2], 0.7);
       g.drawRect(px + 6, py + 4, 4, 1);
       g.drawRect(px + 22, py + 14, 4, 1);
@@ -115,7 +215,6 @@ function drawTile(g: Graphics, type: TileType, px: number, py: number): void {
       g.beginFill(PALETTE.soil[1]);
       g.drawRect(px, py, TILE_SIZE * SCALE, TILE_SIZE * SCALE);
       g.endFill();
-      // 犁沟
       g.beginFill(PALETTE.soil[2]);
       g.drawRect(px + 2, py + 4, TILE_SIZE * SCALE - 4, 1);
       g.drawRect(px + 2, py + 10, TILE_SIZE * SCALE - 4, 1);
@@ -125,7 +224,6 @@ function drawTile(g: Graphics, type: TileType, px: number, py: number): void {
       break;
 
     case 'stone':
-      // 石头（装饰物）
       g.beginFill(PALETTE.stone[1]);
       g.drawRoundedRect(px + 4, py + 8, TILE_SIZE * SCALE - 8, TILE_SIZE * SCALE - 12, 2);
       g.endFill();
@@ -135,7 +233,6 @@ function drawTile(g: Graphics, type: TileType, px: number, py: number): void {
       break;
 
     case 'tree':
-      // 树（装饰物，会覆盖草地）
       // 先画一片草地作为底
       g.beginFill(PALETTE.grass_spring[0]);
       g.drawRect(px, py, TILE_SIZE * SCALE, TILE_SIZE * SCALE);
@@ -150,6 +247,8 @@ function drawTile(g: Graphics, type: TileType, px: number, py: number): void {
       g.endFill();
       g.beginFill(PALETTE.grass_summer[1]);
       g.drawCircle(px + TILE_SIZE * SCALE * 0.35, py + TILE_SIZE * SCALE * 0.4, TILE_SIZE * SCALE * 0.3);
+      g.endFill();
+      g.beginFill(PALETTE.grass_summer[1]);
       g.drawCircle(px + TILE_SIZE * SCALE * 0.65, py + TILE_SIZE * SCALE * 0.4, TILE_SIZE * SCALE * 0.3);
       g.endFill();
       g.beginFill(PALETTE.grass_summer[2]);
@@ -176,7 +275,6 @@ export function drawMap(g: Graphics, map: TileMapData): void {
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const tile = map[y][x];
-      // 装饰物不画底层
       if (tile !== 'tree' && tile !== 'stone') {
         drawTile(g, tile, x * TILE_SIZE * SCALE, y * TILE_SIZE * SCALE);
       }
