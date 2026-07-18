@@ -15,7 +15,7 @@ function App() {
           <span className="text-sm text-sv-text">时间：</span>
           <select
             value={timeOfDay}
-            onChange={(e) => setTimeOfDay(e.target.value as any)}
+            onChange={(e) => setTimeOfDay(e.target.value as 'morning' | 'day' | 'sunset' | 'night')}
             className="bg-sv-bg border-2 border-sv-wood text-sv-text text-sm px-2 py-1"
           >
             <option value="morning">早晨</option>

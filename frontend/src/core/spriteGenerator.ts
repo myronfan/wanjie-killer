@@ -3,6 +3,9 @@
  *
  * 暂时不依赖外部图片资源，用代码绘出星露谷风的占位 sprite。
  * 之后可以替换为 OpenGameArt 的真实资源。
+ *
+ * 修复历史：
+ * - 2026-07-18: 修复脸被头发覆盖、帧编号逻辑、删除错误的二次绘制
  */
 
 import { Graphics } from 'pixi.js';
@@ -19,28 +22,31 @@ export interface SpriteConfig {
 /**
  * 创建一个角色 sprite（4 方向 × 4 帧 = 16 帧 sprite sheet）
  *
- * 布局（64×256 像素，每帧 64×64）：
- *   行 0: up 方向的 4 帧
- *   行 1: right 方向的 4 帧
- *   行 2: down 方向的 4 帧
- *   行 3: left 方向的 4 帧
- *
- * 实际我们用 Graphics 对象绘制，不需要 sprite sheet。
+ * 绘制顺序（重要！）：
+ *   1. 脸（底层）
+ *   2. 头发后层（覆盖头顶）
+ *   3. 脸下半部（恢复脸的下半部分）
+ *   4. 眼睛
+ *   5. 头发前刘海
+ *   6. 身体
+ *   7. 腿
  */
 export function drawCharacter(
   graphics: Graphics,
   x: number,        // 绘制起点 x
   y: number,        // 绘制起点 y
   direction: Direction,
-  frame: number,    // 当前帧（0-7，4 帧动画）
+  frame: number,    // 当前帧（0-7，4 帧动画循环）
   config: SpriteConfig
 ): void {
   graphics.clear();
+  graphics.lineStyle(0);
 
   const SCALE = 2;  // 16px → 32px
 
   // 计算走路偏移（走路时身体轻微上下浮动）
-  const walkOffset = (frame === 1 || frame === 5) ? 0 : (frame === 2 || frame === 6) ? 1 : (frame === 3 || frame === 7) ? 0 : 0;
+  // 帧 0,4 = 站立; 帧 1,5 = 起步; 帧 2,6 = 中间(抬起); 帧 3,7 = 落地
+  const walkOffset = (frame === 1 || frame === 5) ? 0 : (frame === 2 || frame === 6) ? 1 : 0;
   const legOffset = (frame === 2 || frame === 6) ? 1 : 0;
 
   // 颜色解析
@@ -53,39 +59,53 @@ export function drawCharacter(
   const headX = x + 8 * SCALE;
   const headY = y + walkOffset + 0;
 
-  // 头发（后）
-  graphics.beginFill(hair);
-  graphics.drawRect(headX, headY, 16 * SCALE, 6 * SCALE);
-
-  // 脸
+  // 1. 先画脸（底层，最先绘制）
   graphics.beginFill(skin);
-  graphics.drawRect(headX + 2 * SCALE, headY + 4 * SCALE, 12 * SCALE, 8 * SCALE);
+  graphics.drawRect(headX, headY, 16 * SCALE, 12 * SCALE);
+  graphics.endFill();
 
-  // 眼睛（仅 down 和 up）
+  // 2. 再画头发后层（覆盖头顶上半部分）
+  graphics.beginFill(hair);
+  graphics.drawRect(headX, headY, 16 * SCALE, 4 * SCALE);
+  graphics.endFill();
+
+  // 3. 画脸部下半部（让头发不覆盖脸的下半部分）
+  graphics.beginFill(skin);
+  graphics.drawRect(headX, headY + 4 * SCALE, 16 * SCALE, 8 * SCALE);
+  graphics.endFill();
+
+  // 4. 眼睛（朝下：双眼；朝上：不画；朝左/右：单眼）
   if (direction === 2) {
-    // 朝下：看不到眼睛
+    // 朝下：两只眼睛
     graphics.beginFill(0x000000);
-    graphics.drawRect(headX + 5 * SCALE, headY + 7 * SCALE, 2 * SCALE, 1 * SCALE);
-    graphics.drawRect(headX + 9 * SCALE, headY + 7 * SCALE, 2 * SCALE, 1 * SCALE);
+    graphics.drawRect(headX + 5 * SCALE, headY + 7 * SCALE, 2 * SCALE, 2 * SCALE);
+    graphics.drawRect(headX + 9 * SCALE, headY + 7 * SCALE, 2 * SCALE, 2 * SCALE);
+    graphics.endFill();
   } else if (direction === 0) {
-    // 朝上：只看到后脑勺
+    // 朝上：只看到后脑勺，不画眼睛
     graphics.beginFill(hair);
     graphics.drawRect(headX, headY, 16 * SCALE, 12 * SCALE);
+    graphics.endFill();
+  } else if (direction === 3) {
+    // 朝左：左眼
+    graphics.beginFill(0x000000);
+    graphics.drawRect(headX + 4 * SCALE, headY + 7 * SCALE, 2 * SCALE, 2 * SCALE);
+    graphics.endFill();
   } else {
-    // 朝左/朝右：单眼
-    if (direction === 3) {
-      graphics.beginFill(0x000000);
-      graphics.drawRect(headX + 4 * SCALE, headY + 7 * SCALE, 1 * SCALE, 2 * SCALE);
-    } else {
-      graphics.beginFill(0x000000);
-      graphics.drawRect(headX + 11 * SCALE, headY + 7 * SCALE, 1 * SCALE, 2 * SCALE);
-    }
+    // 朝右：右眼
+    graphics.beginFill(0x000000);
+    graphics.drawRect(headX + 10 * SCALE, headY + 7 * SCALE, 2 * SCALE, 2 * SCALE);
+    graphics.endFill();
   }
 
-  // 头发（前）
+  // 5. 头发前刘海（覆盖脸的顶部，朝下/左/右时显示）
   if (direction !== 0) {
     graphics.beginFill(hair);
     graphics.drawRect(headX, headY, 16 * SCALE, 2 * SCALE);
+    // 两边的刘海
+    graphics.drawRect(headX + 1 * SCALE, headY + 2 * SCALE, 2 * SCALE, 1 * SCALE);
+    graphics.drawRect(headX + 13 * SCALE, headY + 2 * SCALE, 2 * SCALE, 1 * SCALE);
+    graphics.endFill();
   }
 
   // === 身体 (16x10) ===
@@ -93,6 +113,7 @@ export function drawCharacter(
   const bodyY = y + walkOffset + 12 * SCALE;
   graphics.beginFill(body);
   graphics.drawRect(bodyX, bodyY, 16 * SCALE, 10 * SCALE);
+  graphics.endFill();
 
   // === 腿 (16x6) ===
   const legY = y + walkOffset + 22 * SCALE + legOffset;
@@ -111,16 +132,7 @@ export function drawCharacter(
     graphics.drawRect(bodyX + 2 * SCALE, legY, 5 * SCALE, 6 * SCALE);
     graphics.drawRect(bodyX + 9 * SCALE, legY, 5 * SCALE, 6 * SCALE);
   }
-
-  // === 描边（深色，让角色更立体） ===
-  const darkSkin = darken(skin, 0.3);
-  const darkBody = darken(body, 0.3);
-  graphics.lineStyle(1, parseInt(darkSkin.replace('#', '0x')), 1);
-  graphics.beginFill(skin);
-  graphics.drawRect(headX, headY, 16 * SCALE, 12 * SCALE);
   graphics.endFill();
-
-  graphics.lineStyle(0);
 }
 
 /**
@@ -133,7 +145,7 @@ export function createCharacterSprite(config: SpriteConfig): Graphics {
 }
 
 /**
- * 颜色加深
+ * 颜色加深（保留以备后用）
  */
 function darken(hex: string, factor: number): string {
   const r = parseInt(hex.slice(1, 3), 16);

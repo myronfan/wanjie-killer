@@ -9,7 +9,7 @@
  * - isMoving: 是否在移动
  */
 
-import { DIRECTIONS, type Direction, DIRECTION_VECTORS } from './direction';
+import { DIRECTIONS, type Direction } from './direction';
 import type { TileMapData } from './tileset';
 import { isWalkable, TILE_SIZE } from './tileset';
 import {
