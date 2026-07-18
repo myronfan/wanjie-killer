@@ -36,7 +36,7 @@ function App() {
       <div className="flex gap-3">
         {/* 游戏主区域 */}
         <div className="relative">
-          <PixiGame onPlayerTileChange={(x, y) => setPlayerTile({ x, y })} />
+          <PixiGame onPlayerMove={(x, y) => setPlayerTile({ x, y })} />
 
           {/* 时间叠加层 */}
           {timeOfDay !== 'day' && (
