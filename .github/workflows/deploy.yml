@@ -28,9 +28,17 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Debug npm config
+        run: |
+          echo "USER_CONFIG: $NPM_CONFIG_USERCONFIG"
+          echo "GLOBALCONFIG: $NPM_CONFIG_GLOBALCONFIG"
+          npm config get registry
+          cat ~/.npmrc 2>/dev/null || echo "no ~/.npmrc"
+          cat /etc/npmrc 2>/dev/null || echo "no /etc/npmrc"
+
       - name: Install dependencies
         working-directory: ./frontend
-        run: npm ci --registry=https://registry.npmjs.org/
+        run: npm ci --registry=https://registry.npmjs.org/ --prefer-online --no-cache
 
       - name: Build
         working-directory: ./frontend
