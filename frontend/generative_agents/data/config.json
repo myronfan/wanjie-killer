@@ -11,10 +11,10 @@
         },
         "think": {
             "llm": {
-                "provider": "ollama",
-                "model": "qwen3:4b-instruct-2507-q4_K_M",
-                "base_url": "http://127.0.0.1:11434/v1",
-                "api_key": ""
+                "provider": "openai",
+                "model": "MiniMax-M2.1-highspeed",
+                "base_url": "https://api.minimaxi.com/v1",
+                "api_key": "sk-cp-02J0ntU6sek3_bf1-fDoPcBV9b1NfKx0kTJ2c1RVYs-k6yCZd3V5EfDrvPNaPtlC6b3sY0JaiYR1N4-_nKhHqdqG2QwSUbDDYam80x4-nYdIL6N0bEj9RDE"
             },
             "interval": 1000,
             "poignancy_max": 150
@@ -22,9 +22,9 @@
         "chat_iter": 4,
         "associate": {
             "embedding": {
-                "provider": "ollama",
-                "model": "qwen3-embedding:0.6b-q8_0",
-                "base_url": "http://127.0.0.1:11434",
+                "provider": "hugging_face",
+                "model": "shibing624/text2vec-base-chinese",
+                "base_url": "",
                 "api_key": ""
             },
             "retention": 8

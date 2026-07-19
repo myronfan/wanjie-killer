@@ -1,4 +1,5 @@
 import random
+from functools import partial
 import datetime
 import re
 from string import Template
@@ -85,13 +86,20 @@ class Scratch:
         class wakeupResponse(BaseModel):
             res: int = Field(description="起床时间，24小时制的小时数，整数，范围0到11")
 
-        def _callback(response):
+        def _callback(response, _failsafe=None):
+            # 防御：response 可能是 Pydantic 实例或 dict
+            if hasattr(response, 'res'):
+                response = response.res
+            elif isinstance(response, dict) and 'res' in response and len(response) == 1:
+                response = response['res']
+            if response is None:
+                return _failsafe
             value = response
             if value > 11:
                 value = 11
             return value
 
-        return Result(prompt, _callback, 8, wakeupResponse)
+        return Result(prompt, lambda *a, **kw: _callback(*a, _failsafe=8, **kw), 8, wakeupResponse)
 
     def prompt_schedule_init(self, wake_up):
         prompt = self.build_prompt(
@@ -107,7 +115,14 @@ class Scratch:
         class schedule_initResponse(BaseModel):
             res: list[str] = Field(description="按时间顺序排列的日程活动列表，每项为简短的活动描述")
 
-        def _callback(response):
+        def _callback(response, _failsafe=None):
+            # 防御：response 可能是 Pydantic 实例或 dict
+            if hasattr(response, 'res'):
+                response = response.res
+            elif isinstance(response, dict) and 'res' in response and len(response) == 1:
+                response = response['res']
+            if response is None:
+                return _failsafe
             assert len(response) >= 3, "schedule_init: too few items"
             return response
 
@@ -120,7 +135,7 @@ class Scratch:
             "晚上7点放松一下，看电视",
             "晚上11点睡觉",
         ]
-        return Result(prompt, _callback, failsafe, schedule_initResponse)
+        return Result(prompt, lambda *a, **kw: _callback(*a, _failsafe=failsafe, **kw), failsafe, schedule_initResponse)
 
     def prompt_schedule_daily(self, wake_up, daily_schedule):
         hourly_schedule = ""
@@ -163,11 +178,18 @@ class Scratch:
             "23:00": "睡觉",
         }
 
-        def _callback(response):
+        def _callback(response, _failsafe=None):
+            # 防御：response 可能是 Pydantic 实例或 dict
+            if hasattr(response, 'res'):
+                response = response.res
+            elif isinstance(response, dict) and 'res' in response and len(response) == 1:
+                response = response['res']
+            if response is None:
+                return _failsafe
             assert len(response) >= 5, "less than 5 schedules"
             return response
 
-        return Result(prompt, _callback, failsafe, schedule_dailyResponse)
+        return Result(prompt, lambda *a, **kw: _callback(*a, _failsafe=failsafe, **kw), failsafe, schedule_dailyResponse)
 
     def prompt_schedule_decompose(self, plan, schedule):
         def _plan_des(plan):
@@ -196,14 +218,21 @@ class Scratch:
         class schedule_decomposeResponse(BaseModel):
             res: List[Tuple[str, int]] = Field(description="子任务列表，每项为 [活动描述, 时长分钟数] 的元组")
 
-        def _callback(response):
+        def _callback(response, _failsafe=None):
+            # 防御：response 可能是 Pydantic 实例或 dict
+            if hasattr(response, 'res'):
+                response = response.res
+            elif isinstance(response, dict) and 'res' in response and len(response) == 1:
+                response = response['res']
+            if response is None:
+                return _failsafe
             left = plan["duration"] - sum([s[1] for s in response])
             if left > 0:
                 response.append((plan["describe"], left))
             return response
 
         failsafe = [(plan["describe"], 10) for _ in range(int(plan["duration"] / 10))]
-        return Result(prompt, _callback, failsafe, schedule_decomposeResponse)
+        return Result(prompt, lambda *a, **kw: _callback(*a, _failsafe=failsafe, **kw), failsafe, schedule_decomposeResponse)
 
     def prompt_schedule_revise(self, action, schedule):
         plan, _ = schedule.current_plan()
@@ -251,7 +280,7 @@ class Scratch:
         class schedule_reviseResponse(BaseModel):
             res: List[Tuple[str, str, str]] = Field(description="调整后的完整日程列表，每项为 [开始时间, 结束时间, 活动描述] 的元组，时间格式为 HH:MM")
 
-        def _callback(response):  
+        def _callback(response, _failsafe=None):  
             # response已经是List[Tuple[str, str, str]]类型  
             # 格式: [(开始时间, 结束时间, 描述), ...]  
             decompose = []  
@@ -300,8 +329,12 @@ class Scratch:
         class determine_sectorResponse(BaseModel):
             res: str = Field(description="从给定列表中选出的目标区域名称，必须与列表中的某项完全一致")
 
-        def _callback(response):  
-            # response已经是str类型  
+        def _callback(response, _failsafe=None):  
+            # 防御：response 可能是 dict（LLM 没正确返回 Pydantic），从 .res 拿
+            if isinstance(response, dict):
+                response = response.get('res', '')
+            if not isinstance(response, str):
+                return _failsafe
             # 验证sector是否在有效列表中，或进行映射  
             if response in sectors:  
                 return response  
@@ -310,8 +343,8 @@ class Scratch:
             for s in sectors:  
                 if response.startswith(s):  
                     return s  
-            return failsafe
-        return Result(prompt, _callback, failsafe, determine_sectorResponse)
+            return _failsafe
+        return Result(prompt, lambda *a, **kw: _callback(*a, _failsafe=failsafe, **kw), failsafe, determine_sectorResponse)
 
     def prompt_determine_arena(self, describes, spatial, address):
         prompt = self.build_prompt(
@@ -332,10 +365,17 @@ class Scratch:
         class determine_arenaResponse(BaseModel):
             res: str = Field(description="从给定列表中选出的目标场所名称，必须与列表中的某项完全一致")
 
-        def _callback(response):
+        def _callback(response, _failsafe=None):
+            # 防御：response 可能是 Pydantic 实例或 dict
+            if hasattr(response, 'res'):
+                response = response.res
+            elif isinstance(response, dict) and 'res' in response and len(response) == 1:
+                response = response['res']
+            if response is None:
+                return _failsafe
             return response if response in arenas else failsafe
 
-        return Result(prompt, _callback, failsafe, determine_arenaResponse)
+        return Result(prompt, lambda *a, **kw: _callback(*a, _failsafe=failsafe, **kw), failsafe, determine_arenaResponse)
 
     def prompt_determine_object(self, describes, spatial, address):
         objects = spatial.get_leaves(address)
@@ -352,11 +392,18 @@ class Scratch:
 
         class determine_objectResponse(BaseModel):
             res: str = Field(description="从给定列表中选出的最相关对象名称，必须与列表中的某项完全一致")
-        def _callback(response):
+        def _callback(response, _failsafe=None):
+            # 防御：response 可能是 Pydantic 实例或 dict
+            if hasattr(response, 'res'):
+                response = response.res
+            elif isinstance(response, dict) and 'res' in response and len(response) == 1:
+                response = response['res']
+            if response is None:
+                return _failsafe
             # pattern = ["The most relevant object from the Objects is: <(.+?)>", "<(.+?)>"]
             return response if response in objects else failsafe
 
-        return Result(prompt, _callback, failsafe, determine_objectResponse)
+        return Result(prompt, lambda *a, **kw: _callback(*a, _failsafe=failsafe, **kw), failsafe, determine_objectResponse)
 
     def prompt_describe_event(self, subject, describe, address, emoji=None):
         prompt = self.build_prompt(
@@ -375,7 +422,7 @@ class Scratch:
         class describe_eventResponse(BaseModel):
             res: List[Tuple[str, str, str]] = Field(description="动作的三元组列表，每项为 [主语, 谓语, 宾语]")
 
-        def _callback(response):  
+        def _callback(response, _failsafe=None):  
             # response已经是List[Tuple[str, str, str]]类型  
             # 格式: [(主语, 谓语, 宾语), ...]  
             for subject, predicate, obj in response:  
@@ -383,7 +430,7 @@ class Scratch:
                 if subject and predicate and obj:  
                     return Event(subject, predicate, obj, describe=describe, address=address, emoji=emoji)  
             return None
-        return Result(prompt, _callback, failsafe, describe_eventResponse)
+        return Result(prompt, lambda *a, **kw: _callback(*a, _failsafe=failsafe, **kw), failsafe, describe_eventResponse)
 
     def prompt_describe_object(self, obj, describe):
         prompt = self.build_prompt(
@@ -398,7 +445,14 @@ class Scratch:
         class DescribeObjectResponse(BaseModel):
             res: str = Field(description="物品的状态描述，不超过10个字的短句，不要包含物品名称")
 
-        def _callback(response):
+        def _callback(response, _failsafe=None):
+            # 防御：response 可能是 Pydantic 实例或 dict
+            if hasattr(response, 'res'):
+                response = response.res
+            elif isinstance(response, dict) and 'res' in response and len(response) == 1:
+                response = response['res']
+            if response is None:
+                return _failsafe
             response = response.strip()
             # 移除 "物品名" 前缀
             if response.startswith(obj):
@@ -406,7 +460,7 @@ class Scratch:
             return response or failsafe
 
         failsafe = "空闲"
-        return Result(prompt, _callback, failsafe, DescribeObjectResponse)
+        return Result(prompt, lambda *a, **kw: _callback(*a, _failsafe=failsafe, **kw), failsafe, DescribeObjectResponse)
 
     def prompt_decide_chat(self, agent, other, focus, chats):
         def _status_des(a):
@@ -441,13 +495,20 @@ class Scratch:
         class decide_chatResponse(BaseModel):
             res: bool = Field(description="是否主动发起对话，true 表示会主动对话，false 表示不会")
 
-        def _callback(response):
+        def _callback(response, _failsafe=None):
+            # 防御：response 可能是 Pydantic 实例或 dict
+            if hasattr(response, 'res'):
+                response = response.res
+            elif isinstance(response, dict) and 'res' in response and len(response) == 1:
+                response = response['res']
+            if response is None:
+                return _failsafe
             if isinstance(response, bool):
                 return response
             return str(response).strip().lower() in ("true", "yes", "是", "1")
 
         failsafe = False
-        return Result(prompt, _callback, failsafe, decide_chatResponse)
+        return Result(prompt, lambda *a, **kw: _callback(*a, _failsafe=failsafe, **kw), failsafe, decide_chatResponse)
 
     def prompt_decide_chat_terminate(self, agent, other, chats):
         conversation = "\n".join(["{}: {}".format(n, u) for n, u in chats])
@@ -467,13 +528,20 @@ class Scratch:
         class decide_chat_terminateResponse(BaseModel):
             res: bool = Field(description="对话是否已告一段落，true 表示对话结束，false 表示对话仍在继续")
 
-        def _callback(response):
+        def _callback(response, _failsafe=None):
+            # 防御：response 可能是 Pydantic 实例或 dict
+            if hasattr(response, 'res'):
+                response = response.res
+            elif isinstance(response, dict) and 'res' in response and len(response) == 1:
+                response = response['res']
+            if response is None:
+                return _failsafe
             if isinstance(response, bool):
                 return response
             return str(response).strip().lower() in ("true", "yes", "是", "1")
 
         failsafe = False
-        return Result(prompt, _callback, failsafe, decide_chat_terminateResponse)
+        return Result(prompt, lambda *a, **kw: _callback(*a, _failsafe=failsafe, **kw), failsafe, decide_chat_terminateResponse)
 
     def prompt_decide_wait(self, agent, other, focus):
         example1 = self.build_prompt(
@@ -548,11 +616,18 @@ class Scratch:
         class decide_waitResponse(BaseModel):
             res: str = Field(description="选择的选项，'A' 表示等待，'B' 表示继续当前行动")
 
-        def _callback(response):
+        def _callback(response, _failsafe=None):
+            # 防御：response 可能是 Pydantic 实例或 dict
+            if hasattr(response, 'res'):
+                response = response.res
+            elif isinstance(response, dict) and 'res' in response and len(response) == 1:
+                response = response['res']
+            if response is None:
+                return _failsafe
             return "A" in response
 
         failsafe = False
-        return Result(prompt, _callback, failsafe, decide_waitResponse)
+        return Result(prompt, lambda *a, **kw: _callback(*a, _failsafe=failsafe, **kw), failsafe, decide_waitResponse)
 
     def prompt_summarize_relation(self, agent, other_name):
         nodes = agent.associate.retrieve_focus([other_name], 50)
@@ -569,10 +644,17 @@ class Scratch:
         class summarize_relationResponse(BaseModel):
             res: str = Field(description="一句话描述两人之间的关系，以第三人称表述")
 
-        def _callback(response):
+        def _callback(response, _failsafe=None):
+            # 防御：response 可能是 Pydantic 实例或 dict
+            if hasattr(response, 'res'):
+                response = response.res
+            elif isinstance(response, dict) and 'res' in response and len(response) == 1:
+                response = response['res']
+            if response is None:
+                return _failsafe
             return response.strip() or failsafe
 
-        return Result(prompt, _callback, failsafe, summarize_relationResponse)
+        return Result(prompt, lambda *a, **kw: _callback(*a, _failsafe=failsafe, **kw), failsafe, summarize_relationResponse)
 
     def prompt_generate_chat(self, agent, other, relation, chats):
         focus = [relation, other.get_event().get_describe()]
@@ -620,7 +702,14 @@ class Scratch:
         class generate_chat(BaseModel):
             res: str = Field(description="角色说出的对话内容，1到3句话")
 
-        def _callback(response):
+        def _callback(response, _failsafe=None):
+            # 防御：response 可能是 Pydantic 实例或 dict
+            if hasattr(response, 'res'):
+                response = response.res
+            elif isinstance(response, dict) and 'res' in response and len(response) == 1:
+                response = response['res']
+            if response is None:
+                return _failsafe
             response = response.strip()
             # 移除 "名字：" 前缀
             if response.startswith(agent.name + "：") or response.startswith(agent.name + ":"):
@@ -628,7 +717,7 @@ class Scratch:
             return response or failsafe
 
         failsafe = "嗯"
-        return Result(prompt, _callback, failsafe, generate_chat)
+        return Result(prompt, lambda *a, **kw: _callback(*a, _failsafe=failsafe, **kw), failsafe, generate_chat)
 
     def prompt_generate_chat_check_repeat(self, agent, chats, content):
         conversation = "\n".join(["{}: {}".format(n, u) for n, u in chats])
@@ -648,13 +737,20 @@ class Scratch:
             }
         )
 
-        def _callback(response):
+        def _callback(response, _failsafe=None):
+            # 防御：response 可能是 Pydantic 实例或 dict
+            if hasattr(response, 'res'):
+                response = response.res
+            elif isinstance(response, dict) and 'res' in response and len(response) == 1:
+                response = response['res']
+            if response is None:
+                return _failsafe
             if isinstance(response, bool):
                 return response
             return str(response).strip().lower() in ("true", "yes", "是", "1")
 
         failsafe = False
-        return Result(prompt, _callback, failsafe, generate_chat_check_repeatResponse)
+        return Result(prompt, lambda *a, **kw: _callback(*a, _failsafe=failsafe, **kw), failsafe, generate_chat_check_repeatResponse)
 
     def prompt_summarize_chats(self, chats):
         conversation = "\n".join(["{}: {}".format(n, u) for n, u in chats])
@@ -669,7 +765,14 @@ class Scratch:
         class summarize_chatsResponse(BaseModel):
             res: str = Field(description="对话内容的简短摘要，一句话概括对话主题")
 
-        def _callback(response):
+        def _callback(response, _failsafe=None):
+            # 防御：response 可能是 Pydantic 实例或 dict
+            if hasattr(response, 'res'):
+                response = response.res
+            elif isinstance(response, dict) and 'res' in response and len(response) == 1:
+                response = response['res']
+            if response is None:
+                return _failsafe
             return response.strip()
 
         if len(chats) > 1:
@@ -677,7 +780,7 @@ class Scratch:
         else:
             failsafe = "{} 说的话没有得到回应".format(chats[0][0])
 
-        return Result(prompt, _callback, failsafe, summarize_chatsResponse)
+        return Result(prompt, lambda *a, **kw: _callback(*a, _failsafe=failsafe, **kw), failsafe, summarize_chatsResponse)
 
     def prompt_reflect_focus(self, nodes, topk):
         prompt = self.build_prompt(
@@ -691,7 +794,14 @@ class Scratch:
         class reflect_focusResponse(BaseModel):
             res: List[str] = Field(description="需要深入思考的问题列表，每项为一个问题")
 
-        def _callback(response):
+        def _callback(response, _failsafe=None):
+            # 防御：response 可能是 Pydantic 实例或 dict
+            if hasattr(response, 'res'):
+                response = response.res
+            elif isinstance(response, dict) and 'res' in response and len(response) == 1:
+                response = response['res']
+            if response is None:
+                return _failsafe
             assert len(response) >= 1, "reflect_focus: empty list"
             return response
 
@@ -700,7 +810,7 @@ class Scratch:
                 "{} 住在哪里？".format(self.name),
                 "{} 今天要做什么？".format(self.name),
             ]
-        return Result(prompt, _callback, failsafe, reflect_focusResponse)
+        return Result(prompt, lambda *a, **kw: _callback(*a, _failsafe=failsafe, **kw), failsafe, reflect_focusResponse)
 
     def prompt_reflect_insights(self, nodes, topk):
         prompt = self.build_prompt(
@@ -714,7 +824,7 @@ class Scratch:
         class reflect_insightsResponse(BaseModel):
             res: List[Tuple[str, str]] = Field(description="洞察列表，每项为 [洞察内容, 相关节点索引的逗号分隔字符串如'1,2,3'] 的元组")
 
-        def _callback(response):  
+        def _callback(response, _failsafe=None):  
             insights = []  
             for insight, node_ids_str in response:  
                 # 将字符串"1,2,3"转换为节点ID列表  
@@ -729,7 +839,7 @@ class Scratch:
                     [nodes[0].node_id],
                 ]
             ]
-        return Result(prompt, _callback, failsafe, reflect_insightsResponse)
+        return Result(prompt, lambda *a, **kw: _callback(*a, _failsafe=failsafe, **kw), failsafe, reflect_insightsResponse)
 
     def prompt_reflect_chat_planing(self, chats):
         all_chats = "\n".join(["{}: {}".format(n, c) for n, c in chats])
@@ -745,11 +855,18 @@ class Scratch:
         class reflect_chat_planingResponse(BaseModel):
             res: str = Field(description="从对话中提取的对角色计划的影响或启发，一句话描述")
 
-        def _callback(response):
+        def _callback(response, _failsafe=None):
+            # 防御：response 可能是 Pydantic 实例或 dict
+            if hasattr(response, 'res'):
+                response = response.res
+            elif isinstance(response, dict) and 'res' in response and len(response) == 1:
+                response = response['res']
+            if response is None:
+                return _failsafe
             return response.strip() or failsafe
 
         failsafe = f"{self.name} 进行了一次对话"
-        return Result(prompt, _callback, failsafe, reflect_chat_planingResponse)
+        return Result(prompt, lambda *a, **kw: _callback(*a, _failsafe=failsafe, **kw), failsafe, reflect_chat_planingResponse)
 
     def prompt_reflect_chat_memory(self, chats):
         all_chats = "\n".join(["{}: {}".format(n, c) for n, c in chats])
@@ -764,11 +881,18 @@ class Scratch:
         class reflect_chat_memoryResponse(BaseModel):
             res: str = Field(description="从对话中提取的值得记忆的内容，一句话描述")
 
-        def _callback(response):
+        def _callback(response, _failsafe=None):
+            # 防御：response 可能是 Pydantic 实例或 dict
+            if hasattr(response, 'res'):
+                response = response.res
+            elif isinstance(response, dict) and 'res' in response and len(response) == 1:
+                response = response['res']
+            if response is None:
+                return _failsafe
             return response.strip() or failsafe
 
         failsafe = f"{self.name} 进行了一次对话"
-        return Result(prompt, _callback, failsafe, reflect_chat_memoryResponse)
+        return Result(prompt, lambda *a, **kw: _callback(*a, _failsafe=failsafe, **kw), failsafe, reflect_chat_memoryResponse)
 
     def prompt_retrieve_plan(self, nodes):
         statements = [
@@ -787,12 +911,19 @@ class Scratch:
         class retrieve_planResponse(BaseModel):
             res: List[str] = Field(description="从记忆中检索出的相关计划列表，每项为一条计划描述")
 
-        def _callback(response):
+        def _callback(response, _failsafe=None):
+            # 防御：response 可能是 Pydantic 实例或 dict
+            if hasattr(response, 'res'):
+                response = response.res
+            elif isinstance(response, dict) and 'res' in response and len(response) == 1:
+                response = response['res']
+            if response is None:
+                return _failsafe
             assert len(response) >= 1, "retrieve_plan: empty list"
             return response
 
         failsafe = [r.describe for r in random.choices(nodes, k=5)]
-        return Result(prompt, _callback, failsafe, retrieve_planResponse)
+        return Result(prompt, lambda *a, **kw: _callback(*a, _failsafe=failsafe, **kw), failsafe, retrieve_planResponse)
 
     def prompt_retrieve_thought(self, nodes):
         statements = [
@@ -810,11 +941,18 @@ class Scratch:
         class retrieve_thoughtResponse(BaseModel):
             res: str = Field(description="从记忆中检索出的相关思考内容，一句话总结")
 
-        def _callback(response):
+        def _callback(response, _failsafe=None):
+            # 防御：response 可能是 Pydantic 实例或 dict
+            if hasattr(response, 'res'):
+                response = response.res
+            elif isinstance(response, dict) and 'res' in response and len(response) == 1:
+                response = response['res']
+            if response is None:
+                return _failsafe
             return response.strip() or failsafe
 
         failsafe = "{} 应该遵循昨天的日程".format(self.name)
-        return Result(prompt, _callback, failsafe, retrieve_thoughtResponse)
+        return Result(prompt, lambda *a, **kw: _callback(*a, _failsafe=failsafe, **kw), failsafe, retrieve_thoughtResponse)
 
     def prompt_retrieve_currently(self, plan_note, thought_note):
         time_stamp = (
@@ -836,9 +974,16 @@ class Scratch:
         class retrieve_currentlyResponse(BaseModel):
             res: str = Field(description="角色当前状态的更新描述，基于过去的计划和思考")
 
-        def _callback(response):
+        def _callback(response, _failsafe=None):
+            # 防御：response 可能是 Pydantic 实例或 dict
+            if hasattr(response, 'res'):
+                response = response.res
+            elif isinstance(response, dict) and 'res' in response and len(response) == 1:
+                response = response['res']
+            if response is None:
+                return _failsafe
             return response.strip() or failsafe
 
         failsafe = self.currently
 
-        return Result(prompt, _callback, failsafe, retrieve_currentlyResponse)
+        return Result(prompt, lambda *a, **kw: _callback(*a, _failsafe=failsafe, **kw), failsafe, retrieve_currentlyResponse)

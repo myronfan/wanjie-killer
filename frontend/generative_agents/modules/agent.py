@@ -89,6 +89,39 @@ class Agent:
         if not self._llm:
             self._llm = create_llm_model(self.think_config["llm"])
 
+    def _unwrap(self, value):
+        """统一把 Pydantic 实例 / 包装 dict 拆出真正的 .res 值。
+
+        修复目标：
+        - PoignancyEventResponse 应该是 int，但 LLM 返回 Pydantic 实例导致 int += Pydantic 崩
+        - callback 之前返回 {"res": <val>} 也兼容
+        - 普通值（str/list/dict）原样返回
+        """
+        if value is None:
+            return None
+        # Pydantic v2: BaseModel 实例
+        try:
+            from pydantic import BaseModel
+            if isinstance(value, BaseModel):
+                if hasattr(value, "res"):
+                    inner = getattr(value, "res")
+                    return inner.res if isinstance(inner, BaseModel) and hasattr(inner, "res") else inner
+                return value
+        except Exception:
+            pass
+        # dict 形式: {"res": <val>}
+        if isinstance(value, dict):
+            if "res" in value:
+                inner = value["res"]
+                if len(value) == 1:
+                    return inner if not hasattr(inner, "res") else inner.res
+                return value
+            return value
+        # list 长度 1 再拆一层
+        if isinstance(value, list) and len(value) == 1:
+            return self._unwrap(value[0])
+        return value
+
     def completion(self, func_hint, *args, **kwargs):
         assert hasattr(
             self.scratch, "prompt_" + func_hint
@@ -99,6 +132,7 @@ class Agent:
         if self.llm_available():
             self.logger.info("{} -> {}".format(self.name, func_hint))
             output = self._llm.completion(**res)
+            output = self._unwrap(output)
             msg = {"<PROMPT>": "\n" + res["prompt"] + "\n"}
             msg.update({"response": output})
         self.logger.debug(utils.block_msg(title, msg))
@@ -204,15 +238,21 @@ class Agent:
             init_schedule = self.completion("schedule_init", wake_up)
             # make daily schedule
             hours = [f"{i}:00" for i in range(24)]
-            # seed = [(h, "sleeping") for h in hours[:wake_up]]
-            seed = [(h, "睡觉") for h in hours[:wake_up]]
-            seed += [(h, "") for h in hours[wake_up:]]
-            schedule = {}
+            # 永远保持 24 小时完整：LLM 只返回 wake_up 之后的部分，前面用睡觉填充
+            schedule = {h: "睡觉" for h in hours[:wake_up]}
             for _ in range(self.schedule.max_try):
-                schedule = {h: s for h, s in seed[:wake_up]}
-                schedule.update(
-                    self.completion("schedule_daily", wake_up, init_schedule)
-                )
+                # LLM 返回 wake_up 之后的活动，merge 进 schedule
+                llm_schedule = self.completion("schedule_daily", wake_up, init_schedule)
+                if not isinstance(llm_schedule, dict):
+                    llm_schedule = {}
+                # 只接受 "X:00" 格式的 key
+                for k, v in llm_schedule.items():
+                    if k in hours and wake_up <= int(k.split(":")[0]):
+                        schedule[k] = v if v else "空闲"
+                # 补全 wake_up 之后缺失的时段
+                for h in hours[wake_up:]:
+                    if h not in schedule:
+                        schedule[h] = "空闲"
                 if len(set(schedule.values())) >= self.schedule.diversity:
                     break
 
