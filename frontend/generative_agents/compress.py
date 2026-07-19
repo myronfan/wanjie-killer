@@ -299,9 +299,11 @@ if __name__ == "__main__":
         print(f"[WATCH] watching {checkpoints_folder} -> {compressed_folder} every {args.watch}s", flush=True)
         while True:
             try:
+                os.makedirs(compressed_folder, exist_ok=True)  # 关键修复：每次都确保目录存在
                 generate_report(checkpoints_folder, compressed_folder, file_markdown)
                 generate_movement(checkpoints_folder, compressed_folder, file_movement)
                 print(f"[WATCH] recompressed at {_time.strftime('%H:%M:%S')}", flush=True)
             except Exception as e:
                 print(f"[WATCH] error: {e}", flush=True)
+                import traceback; traceback.print_exc()
             _time.sleep(args.watch)

@@ -27,9 +27,25 @@ def index():
     else:
         return f"Invalid name of the simulation: '{name}'"
 
+    # 确保目录存在（防止前端 race condition）
+    os.makedirs(compressed_folder, exist_ok=True)
     replay_file = f"{compressed_folder}/{file_movement}"
     if not os.path.exists(replay_file):
-        return f"The data file doesn‘t exist: '{replay_file}'<br />Run compress.py to generate the data first."
+        # 返回友好的等待页面，不是冷冰冰 404。用户感觉更友好。
+        return (
+            f"<html><head><meta charset='utf-8'><meta http-equiv='refresh' content='5'>"
+            f"<title>等待AI数据...</title><style>"
+            f"body{{font-family:sans-serif;text-align:center;padding:60px;background:#1a1a1a;color:#fff}}"
+            f"h1{{color:#5a9}}h2{{color:#888;font-weight:normal}}"
+            f".spinner{{display:inline-block;width:40px;height:40px;border:4px solid #333;"
+            f"border-top-color:#5a9;border-radius:50%;animation:spin 1s linear infinite}}"
+            f"@keyframes spin{{to{{transform:rotate(360deg)}}}}</style></head><body>"
+            f"<div class='spinner'></div>"
+            f"<h1>⏳ 正在生成第一个 step 数据...</h1>"
+            f"<h2>当前 simulation: <code>{name}</code></h2>"
+            f"<p style='color:#888'>LLM 正在决策 3 个 AI 角色的第一个动作（首次约 3-5 分钟）<br>"
+            f"此页面会在 5 秒后自动刷新。</p></body></html>"
+        )
 
     with open(replay_file, "r", encoding="utf-8") as f:
         params = json.load(f)
