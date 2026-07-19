@@ -5,6 +5,7 @@ from flask import Flask, render_template, request
 
 from compress import frames_per_step, file_movement
 from start import personas
+import time as _time
 
 app = Flask(
     __name__,
@@ -64,6 +65,29 @@ def index():
         zoom=zoom,
         **params
     )
+
+
+@app.route("/api/status.json", methods=["GET"])
+def api_status():
+    name = request.args.get("name", "")
+    if not name:
+        return {"error": "missing name"}, 400
+    replay_file = f"results/compressed/{name}/{file_movement}"
+    if not os.path.exists(replay_file):
+        return {"error": "no_data", "name": name, "has_data": False}, 404
+    stat = os.stat(replay_file)
+    return {
+        "name": name,
+        "has_data": True,
+        "mtime": stat.st_mtime,
+        "mtime_iso": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+        "size": stat.st_size,
+    }
+
+
+@app.route("/api/health", methods=["GET"])
+def api_health():
+    return {"status": "ok", "server_time": _time.time(), "iso": datetime.now().isoformat()}
 
 
 if __name__ == "__main__":

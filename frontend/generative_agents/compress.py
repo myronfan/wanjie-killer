@@ -272,6 +272,7 @@ def generate_report(checkpoints_folder, compressed_folder, compressed_file):
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--name", type=str, default="", help="the name of the simulation")
+parser.add_argument("--watch", type=int, default=0, help="Watch mode: re-compress every N seconds (0 = single shot)")
 args = parser.parse_args()
 
 
@@ -287,7 +288,20 @@ if __name__ == "__main__":
     compressed_folder = f"results/compressed/{name}"
     os.makedirs(compressed_folder, exist_ok=True)
 
-    generate_report(checkpoints_folder, compressed_folder, file_markdown)
-    generate_movement(checkpoints_folder, compressed_folder, file_movement)
-
-    print("Compression completed.")
+    if args.watch <= 0:
+        # 单次模式：原行为
+        generate_report(checkpoints_folder, compressed_folder, file_markdown)
+        generate_movement(checkpoints_folder, compressed_folder, file_movement)
+        print("Compression completed.")
+    else:
+        # 实时 watch 模式：每 N 秒重打包
+        import time as _time
+        print(f"[WATCH] watching {checkpoints_folder} -> {compressed_folder} every {args.watch}s", flush=True)
+        while True:
+            try:
+                generate_report(checkpoints_folder, compressed_folder, file_markdown)
+                generate_movement(checkpoints_folder, compressed_folder, file_movement)
+                print(f"[WATCH] recompressed at {_time.strftime('%H:%M:%S')}", flush=True)
+            except Exception as e:
+                print(f"[WATCH] error: {e}", flush=True)
+            _time.sleep(args.watch)

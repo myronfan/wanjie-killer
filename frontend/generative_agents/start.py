@@ -10,14 +10,7 @@ from modules.game import create_game, get_game
 from modules import utils
 
 personas = [
-    "阿伊莎", "克劳斯", "玛丽亚", "沃尔夫冈",  # 学生
-    "梅", "约翰", "埃迪",  # 家庭：教授、药店主人、学生
-    "简", "汤姆",  # 家庭：家庭主妇、市场主人
-    "卡门", "塔玛拉",  # 室友：供应店主人、儿童读物作家
-    "亚瑟", "伊莎贝拉",  # 酒吧老板、咖啡馆老板
-    "山姆", "詹妮弗",  # 家庭：退役军官、水彩画家
-    "弗朗西斯科", "海莉", "拉吉夫", "拉托亚",  # 共居空间：喜剧演员、作家、画家、摄影师
-    "阿比盖尔", "卡洛斯", "乔治", "瑞恩", "山本百合子", "亚当",  # 动画师、诗人、数学家、软件工程师、税务律师、哲学家
+    "阿伊莎", "克劳斯", "玛丽亚",  # 精简到 3 个角色
 ]
 
 
@@ -163,14 +156,13 @@ parser = argparse.ArgumentParser(description="console for village")
 parser.add_argument("--name", type=str, default="", help="The simulation name")
 parser.add_argument("--start", type=str, default="20240213-09:30", help="The starting time of the simulated ville")
 parser.add_argument("--resume", action="store_true", help="Resume running the simulation")
-parser.add_argument("--step", type=int, default=10, help="The simulate step")
+parser.add_argument("--step", type=int, default=10, help="The simulate step (per loop when --loop)")
+parser.add_argument("--loop", action="store_true", help="Run in live loop mode (never exit, simulate indefinitely)")
 parser.add_argument("--stride", type=int, default=10, help="The step stride in minute")
 parser.add_argument("--verbose", type=str, default="debug", help="The verbose level")
 parser.add_argument("--log", type=str, default="", help="Name of the log file")
-args = parser.parse_args()
-
-
 if __name__ == "__main__":
+    args = parser.parse_args()
     checkpoints_path = "results/checkpoints"
 
     name = args.name
@@ -201,4 +193,16 @@ if __name__ == "__main__":
     static_root = "frontend/static"
 
     server = SimulateServer(name, static_root, checkpoints_folder, sim_config, start_step, args.verbose, args.log)
-    server.simulate(args.step, args.stride)
+    if getattr(args, "loop", False):
+        per_loop = max(1, args.step)
+        import time as _time
+        print(f"[LIVE] entering live loop, {per_loop} step(s) per loop, stride={args.stride}s", flush=True)
+        while True:
+            try:
+                server.simulate(per_loop, args.stride)
+            except Exception as e:
+                print(f"[LIVE] simulate error: {e}", flush=True)
+                import traceback; traceback.print_exc()
+            _time.sleep(0.5)
+    else:
+        server.simulate(args.step, args.stride)

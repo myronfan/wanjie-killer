@@ -2,6 +2,66 @@
 
 {% block content %}
 <div id="game-container" style="text-align: center"></div>
+
+<!-- 实时状态条 -->
+<div id="live-bar" style="background:#222;color:#fff;padding:8px 12px;font-family:monospace;font-size:13px;display:flex;gap:14px;align-items:center;justify-content:space-between;border-radius:5px;margin:8px 0;">
+    <span>📡 当前数据最后更新: <span id="live-mtime" style="color:#7fd">加载中…</span></span>
+    <span>📦 文件大小: <span id="live-size" style="color:#7fd">--</span></span>
+    <span>🕒 服务器时间: <span id="live-now" style="color:#7fd">--</span></span>
+    <button id="live-reload" type="button" style="background:#5a9;color:#fff;border:0;padding:6px 14px;border-radius:4px;cursor:pointer;">🔄 重新加载最新数据</button>
+</div>
+
+<script>
+(function() {
+    const mtimeEl = document.getElementById('live-mtime');
+    const sizeEl = document.getElementById('live-size');
+    const nowEl = document.getElementById('live-now');
+    const btn = document.getElementById('live-reload');
+    const NAME = new URLSearchParams(location.search).get('name') || '';
+    let lastMtime = null;
+    let reloadScheduled = false;
+
+    function fmtTime(ts) {
+        return new Date(ts * 1000).toLocaleTimeString('zh-CN');
+    }
+
+    async function pollStatus() {
+        if (!NAME) return;
+        try {
+            const r = await fetch('/api/status.json?name=' + encodeURIComponent(NAME), {cache: 'no-store'});
+            if (!r.ok) return;
+            const data = await r.json();
+            if (data.has_data) {
+                mtimeEl.textContent = fmtTime(data.mtime);
+                sizeEl.textContent = (data.size / 1024).toFixed(1) + ' KB';
+                if (lastMtime !== null && data.mtime > lastMtime && !reloadScheduled) {
+                    // 新数据来了，2 秒后自动 reload
+                    reloadScheduled = true;
+                    mtimeEl.style.color = '#ff6';
+                    setTimeout(() => { window.location.reload(); }, 2000);
+                }
+                lastMtime = data.mtime;
+            } else {
+                mtimeEl.textContent = '(尚无数据)';
+            }
+        } catch (e) { /* 静默 */ }
+    }
+
+    async function tickClock() {
+        try {
+            const r = await fetch('/api/health');
+            const data = await r.json();
+            nowEl.textContent = new Date(data.iso).toLocaleTimeString('zh-CN');
+        } catch (e) { nowEl.textContent = '--'; }
+    }
+
+    btn.addEventListener('click', () => window.location.reload());
+
+    pollStatus(); tickClock();
+    setInterval(pollStatus, 15000);  // 15 秒轮询一次（轻量）
+    setInterval(tickClock, 5000);
+})();
+</script>
 <div>
     <div class="row">
         <div class="col-md-12" style="border: solid; padding: 1em; padding-left:2em; padding-right:2em; border-radius: 5px;">
