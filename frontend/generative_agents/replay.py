@@ -106,5 +106,30 @@ def api_health():
     return {"status": "ok", "server_time": _time.time(), "iso": datetime.now().isoformat()}
 
 
+@app.route("/api/latest_step.json", methods=["GET"])
+def api_latest_step():
+    """返回最新的 movement step，LIVE 模式前端用：
+       - 返回当前 movement.json 的最大 key 和对应 frame
+       - 让 Phaser 知道 agent 的最新 LLM 决策位置（不再依赖 60 帧锁定）
+    """
+    name = request.args.get("name", "")
+    if not name:
+        return {"error": "missing name"}, 400
+    replay_file = f"results/compressed/{name}/{file_movement}"
+    if not os.path.exists(replay_file):
+        return {"error": "no_data", "name": name, "steps": [], "movement": {}}, 200
+    try:
+        with open(replay_file, "r", encoding="utf-8") as f:
+            params = json.load(f)
+        all_movement = params.get("all_movement", {})
+        # 排除描述和对话字段
+        step_keys = [k for k in all_movement.keys() if k not in ("description", "conversation") and k.isdigit()]
+        step_keys.sort(key=lambda x: int(x))
+        latest = {"steps": step_keys, "movement": all_movement, "latest_key": step_keys[-1] if step_keys else None}
+        return latest
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)

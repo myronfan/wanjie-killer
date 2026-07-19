@@ -5,6 +5,13 @@
 	let zoom = {{ zoom|tojson }};
 	if (zoom <= 0) zoom = document.documentElement.clientWidth / 4400;
 
+	// LIVE_MODE: 实时模式 — 跳过 60 帧锁定，每 10 秒拉新数据，agent 瞬移到 LLM 最新决策位置
+	const LIVE_MODE = new URLSearchParams(location.search).get('live') !== '0';
+	const NAME = new URLSearchParams(location.search).get('name') || '';
+	let liveTarget = {};  // 每 agent 当前 LLM 决策的位置
+	let liveAction = {};  // 每 agent 当前动作描述
+	let liveLocation = {}; // 每 agent 当前地址
+
 	let tile_width = 32;
 	let movement_speed = {{ play_speed|tojson }};
 	let execute_count_max = tile_width / movement_speed;
@@ -427,8 +434,27 @@
 			for (let i = 0; i < Object.keys(personas).length; i++) {
 				let curr_persona_name = Object.keys(personas)[i];
 				let curr_persona = personas[curr_persona_name];
-				curr_persona.body.x = movement_target[curr_persona_name][0];
-				curr_persona.body.y = movement_target[curr_persona_name][1];
+				if (LIVE_MODE && liveTarget[curr_persona_name]) {
+					// LIVE: 每帧尽量把 agent 拉向最新 LLM 决策位置（瞬移感 + 快速错位过渡）
+					const tx = liveTarget[curr_persona_name][0];
+					const ty = liveTarget[curr_persona_name][1];
+					const dx = tx - curr_persona.body.x;
+					const dy = ty - curr_persona.body.y;
+					if (Math.abs(dx) > movement_speed) {
+						curr_persona.body.x += Math.sign(dx) * movement_speed;
+						curr_persona.anims.play(curr_persona_name + (dx > 0 ? '-right-walk' : '-left-walk'), true);
+					} else if (Math.abs(dy) > movement_speed) {
+						curr_persona.body.y += Math.sign(dy) * movement_speed;
+						curr_persona.anims.play(curr_persona_name + (dy > 0 ? '-down-walk' : '-up-walk'), true);
+					} else {
+						curr_persona.body.x = tx;
+						curr_persona.body.y = ty;
+						curr_persona.anims.stop();
+					}
+				} else {
+					curr_persona.body.x = movement_target[curr_persona_name][0];
+					curr_persona.body.y = movement_target[curr_persona_name][1];
+				}
 			}
 			execute_count = execute_count_max + 1;
 			step = step + 1;
@@ -439,4 +465,37 @@
 
 		execute_count -= 1;
 	}
+</script>
+
+<!-- LIVE MODE: 每 10 秒拉取最新 LLM 决策位置 -->
+<script>
+(function() {
+    if (typeof LIVE_MODE === 'undefined' || !LIVE_MODE || !NAME) return;
+    async function pollLive() {
+        try {
+            const r = await fetch('/api/latest_step.json?name=' + encodeURIComponent(NAME), {cache: 'no-store'});
+            if (!r.ok) return;
+            const data = await r.json();
+            if (!data.steps || data.steps.length === 0) return;
+            const latestKey = data.steps[data.steps.length - 1];
+            const frame = data.movement[latestKey];
+            if (!frame) return;
+            for (const agentName of Object.keys(frame)) {
+                const f = frame[agentName];
+                if (!f || !f.movement) continue;
+                const x = f.movement[0] * tile_width;
+                const y = f.movement[1] * tile_width;
+                liveTarget[agentName] = [x, y];
+                liveAction[agentName] = f.action;
+                liveLocation[agentName] = f.location;
+                if (document.getElementById("current_action__" + agentName)) {
+                    document.getElementById("current_action__" + agentName).innerHTML = f.action;
+                    document.getElementById("target_address__" + agentName).innerHTML = f.location;
+                }
+            }
+        } catch (e) { /* 静默 */ }
+    }
+    pollLive();
+    setInterval(pollLive, 10000);
+})();
 </script>

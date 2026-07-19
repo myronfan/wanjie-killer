@@ -7,8 +7,11 @@
 <div id="live-bar" style="background:#222;color:#fff;padding:8px 12px;font-family:monospace;font-size:13px;display:flex;gap:14px;align-items:center;justify-content:space-between;border-radius:5px;margin:8px 0;">
     <span>📡 当前数据最后更新: <span id="live-mtime" style="color:#7fd">加载中…</span></span>
     <span>📦 文件大小: <span id="live-size" style="color:#7fd">--</span></span>
+        <span>🎯 最新 step: <span id="live-step" style="color:#7fd">--</span></span>
     <span>🕒 服务器时间: <span id="live-now" style="color:#7fd">--</span></span>
-    <button id="live-reload" type="button" style="background:#5a9;color:#fff;border:0;padding:6px 14px;border-radius:4px;cursor:pointer;">🔄 重新加载最新数据</button>
+    <button id="live-reload" type="button" style="background:#5a9;color:#fff;border:0;padding:6px 14px;border-radius:4px;cursor:pointer;">🔄 重新加载</button>
+    <label style="display:flex;gap:6px;align-items:center;color:#7fd;">🔍 缩放 <input id="zoom-slider" type="range" min="0.2" max="3" step="0.1" value="1.4" style="width:120px"></label>
+    <span id="zoom-val" style="color:#fff;min-width:38px;">1.4x</span>
 </div>
 
 <script>
@@ -57,7 +60,40 @@
 
     btn.addEventListener('click', () => window.location.reload());
 
+    // zoom 滑块
+    const zSlider = document.getElementById('zoom-slider');
+    const zVal = document.getElementById('zoom-val');
+    const cur = new URLSearchParams(location.search);
+    if (cur.has('zoom')) {
+        const z = parseFloat(cur.get('zoom'));
+        if (!isNaN(z) && z >= 0.2 && z <= 3) {
+            zSlider.value = z; zVal.textContent = z.toFixed(1) + 'x';
+        }
+    }
+    zSlider.addEventListener('input', () => { zVal.textContent = parseFloat(zSlider.value).toFixed(1) + 'x'; });
+    zSlider.addEventListener('change', () => {
+        const url = new URL(location.href);
+        url.searchParams.set('zoom', zSlider.value);
+        location.href = url.toString();
+    });
+
     pollStatus(); tickClock();
+
+    // LIVE: 显示当前 agent 位置变化（10 秒一次）
+    async function pollLive() {
+        if (!NAME) return;
+        try {
+            const r = await fetch('/api/latest_step.json?name=' + encodeURIComponent(NAME), {cache: 'no-store'});
+            if (!r.ok) return;
+            const data = await r.json();
+            if (data.latest_key) {
+                const el = document.getElementById('live-step');
+                if (el) el.textContent = '#' + data.latest_key;
+            }
+        } catch (e) { /* 静默 */ }
+    }
+    pollLive();
+    setInterval(pollLive, 10000);
     setInterval(pollStatus, 15000);  // 15 秒轮询一次（轻量）
     setInterval(tickClock, 5000);
 })();
