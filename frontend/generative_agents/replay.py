@@ -106,6 +106,69 @@ def api_health():
     return {"status": "ok", "server_time": _time.time(), "iso": datetime.now().isoformat()}
 
 
+@app.route("/api/stream", methods=["GET"])
+def api_stream():
+    """SSE 流式推送 — 当 movement.json 更新时向客户端推送最新 step。
+
+    真实时模式核心：让前端永远收到最新 LLM 决策，不用 reload、polling 到时间。
+    """
+    from flask import Response, stream_with_context
+    import time as _time_sse
+
+    name = request.args.get("name", "")
+    if not name:
+        return {"error": "missing name"}, 400
+
+    replay_file = f"results/compressed/{name}/{file_movement}"
+    if not os.path.exists(replay_file):
+        os.makedirs(os.path.dirname(replay_file), exist_ok=True)
+
+    last_mtime = 0
+
+    def generate():
+        nonlocal last_mtime
+        # 首次：把当前已存在数据全推一次（如果有）
+        try:
+            if os.path.exists(replay_file):
+                stat = os.stat(replay_file)
+                last_mtime = stat.st_mtime
+                with open(replay_file, "r", encoding="utf-8") as f:
+                    params = json.load(f)
+                am = params.get("all_movement", {})
+                ks = [k for k in am.keys() if k not in ("description", "conversation") and k.isdigit()]
+                ks.sort(key=lambda x: int(x))
+                latest = {"type": "init", "steps": ks, "movement": am if ks else {}}
+                yield f"data: {json.dumps(latest, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e)}, ensure_ascii=False)}\n\n"
+
+        last_step_key = None
+        while True:
+            try:
+                if os.path.exists(replay_file):
+                    stat = os.stat(replay_file)
+                    if stat.st_mtime > last_mtime:
+                        last_mtime = stat.st_mtime
+                        with open(replay_file, "r", encoding="utf-8") as f:
+                            params = json.load(f)
+                        am = params.get("all_movement", {})
+                        ks = [k for k in am.keys() if k not in ("description", "conversation") and k.isdigit()]
+                        ks.sort(key=lambda x: int(x))
+                        if ks:
+                            cur = ks[-1]
+                            if cur != last_step_key:
+                                last_step_key = cur
+                                # 只推最新 step 的 frame（不推所有历史）
+                                latest = {"type": "step", "step": cur, "movement": am[cur]}
+                                yield f"data: {json.dumps(latest, ensure_ascii=False)}\n\n"
+                _time_sse.sleep(2)
+            except Exception:
+                _time_sse.sleep(5)
+
+    return Response(stream_with_context(generate()), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"})
+
+
 @app.route("/api/latest_step.json", methods=["GET"])
 def api_latest_step():
     """返回最新的 movement step，LIVE 模式前端用：

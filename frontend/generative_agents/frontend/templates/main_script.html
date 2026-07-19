@@ -1,45 +1,10 @@
-<script type="text/javascript">
-	// Initialize variables from Flask context
-	let step = {{ step|tojson }};
-	let step_size = {{ sec_per_step|tojson }} * 1000; // Convert to milliseconds
-	let zoom = {{ zoom|tojson }};
-	if (zoom <= 0) zoom = document.documentElement.clientWidth / 4400;
-
-	// LIVE_MODE: 实时模式 — 跳过 60 帧锁定，每 10 秒拉新数据，agent 瞬移到 LLM 最新决策位置
-	window.LIVE_MODE = new URLSearchParams(location.search).get('live') !== '0';
-	window.NAME = new URLSearchParams(location.search).get('name') || '';
-	window.liveTarget = window.liveTarget || {};
-	window.liveAction = window.liveAction || {};
-	window.liveLocation = window.liveLocation || {};
-
-	window.tile_width = window.tile_width || 32;
-	let movement_speed = {{ play_speed|tojson }};
-	let execute_count_max = tile_width / movement_speed;
-	let execute_count = execute_count_max;
-	let all_movement = {{ all_movement|tojson }};
-
-	let datetime_options = { weekday: "long", year: "numeric", month: "long", day: "numeric" };
-	let start_datetime = new Date(Date.parse({{ start_datetime|tojson }}));
-
-	// Persona related variables
-	let persona_names = {{ persona_init_pos|tojson }};
-	var spawn_tile_loc = {};
-	for (var key in persona_names) {
-		spawn_tile_loc[key] = persona_names[key];
-	}
-
+<script>
+	// 全局变量
 	var personas = {};
 	var pronunciatios = {};
-	let anims_direction;
-	let pre_anims_direction;
-	let pre_anims_direction_dict = {};
+	var lastDir = {};
 
-	let movement_target = {};
-
-	let finished = false;
-	let paused = false;
-
-	// Phaser configuration — fixed map size + scale.zoom 完全交给 Phaser 处理缩放
+	// Phaser configuration — 真实时模式，固定 canvas 尺寸，缩放交给 Phaser scale
 	const MAP_W = 4400, MAP_H = 3200;
 	const config = {
 		type: Phaser.AUTO,
@@ -61,21 +26,17 @@
 			update: update
 		},
 		scale: {
-			zoom: zoom,        // 这里控制 canvas 缩放
+			zoom: zoom,
 			autoRound: false
 		}
 	};
 
-	// Create Phaser game instance
 	const game = new Phaser.Game(config);
 	let cursors;
 	let player;
 
-	// Preload function
 	function preload() {
 		this.load.crossOrigin = "";
-
-		// Load images
 		this.load.image("blocks_1", "static/assets/village/tilemap/blocks_1.png");
 		this.load.image("walls", "static/assets/village/tilemap/Room_Builder_32x32.png");
 		this.load.image("interiors_pt1", "static/assets/village/tilemap/interiors_pt1.png");
@@ -89,414 +50,220 @@
 		this.load.image("CuteRPG_Village_B", "static/assets/village/tilemap/CuteRPG_Village_B.png");
 		this.load.image("CuteRPG_Forest_B", "static/assets/village/tilemap/CuteRPG_Forest_B.png");
 		this.load.image("CuteRPG_Desert_C", "static/assets/village/tilemap/CuteRPG_Desert_C.png");
-		this.load.image("CuteRPG_Mountains_B", "static/assets/village/tilemap/CuteRPG_Mountains_B.png");
 		this.load.image("CuteRPG_Desert_B", "static/assets/village/tilemap/CuteRPG_Desert_B.png");
 		this.load.image("CuteRPG_Forest_C", "static/assets/village/tilemap/CuteRPG_Forest_C.png");
-
-		// Load tilemap JSON
-		this.load.tilemapTiledJSON("map", "static/assets/village/tilemap/tilemap.json");
-
-		this.load.atlas("atlas", "static/assets/village/agents/伊莎贝拉/texture.png", filename="static/assets/village/agents/sprite.json");
-
-		// Load persona atlases
-		for (var p in persona_names) {
-			image_static = "static/assets/village/agents/" + p + "/texture.png";
-			this.load.atlas(p, image_static, filename="static/assets/village/agents/sprite.json");
+		this.load.image("CuteRPG_Harbor_D", "static/assets/village/tilemap/CuteRPG_Harbor_D.png");
+		this.load.image("CuteRPG_Mountains_B", "static/assets/village/tilemap/CuteRPG_Mountains_B.png");
+		this.load.tilemapTiledJSON("tilemap", "static/assets/village/tilemap/tilemap.json");
+		for (const name of Object.keys(persona_names)) {
+			this.load.atlas(name, `static/assets/village/agents/${name}/texture.png`, `static/assets/village/agents/sprite.json`);
 		}
 	}
 
-	// Create function
 	function create() {
-		const map = this.make.tilemap({ key: "map" });
+		const map = this.make.tilemap({ key: "tilemap" });
+		const ground_tiles = [
+			map.addTilesetImage("blocks_1"),
+			map.addTilesetImage("CuteRPG_Field_B"),
+			map.addTilesetImage("CuteRPG_Field_C"),
+			map.addTilesetImage("CuteRPG_Forest_B"),
+			map.addTilesetImage("CuteRPG_Forest_C"),
+			map.addTilesetImage("CuteRPG_Harbor_C"),
+			map.addTilesetImage("CuteRPG_Harbor_D"),
+			map.addTilesetImage("CuteRPG_Desert_B"),
+			map.addTilesetImage("CuteRPG_Desert_C"),
+			map.addTilesetImage("CuteRPG_Mountains_B"),
+			map.addTilesetImage("CuteRPG_Village_B")
+		];
+		const object_tiles = [
+			map.addTilesetImage("interiors_pt1"),
+			map.addTilesetImage("interiors_pt2"),
+			map.addTilesetImage("interiors_pt3"),
+			map.addTilesetImage("interiors_pt4"),
+			map.addTilesetImage("interiors_pt5"),
+			map.addTilesetImage("walls")
+		];
+		const ground_layer = map.createLayer("ground", ground_tiles, 0, 0).setDepth(-2);
+		map.createLayer("object", object_tiles, 0, 0).setDepth(-1);
+		map.createLayer("overlap", object_tiles, 0, 0).setDepth(0);
+		map.createLayer("height", object_tiles, 0, 0).setDepth(1);
 
-		// Add tilesets and layers
-		const collisions = map.addTilesetImage("blocks", "blocks_1");
-		const walls = map.addTilesetImage("Room_Builder_32x32", "walls");
-		const interiors_pt1 = map.addTilesetImage("interiors_pt1", "interiors_pt1");
-		const interiors_pt2 = map.addTilesetImage("interiors_pt2", "interiors_pt2");
-		const interiors_pt3 = map.addTilesetImage("interiors_pt3", "interiors_pt3");
-		const interiors_pt4 = map.addTilesetImage("interiors_pt4", "interiors_pt4");
-		const interiors_pt5 = map.addTilesetImage("interiors_pt5", "interiors_pt5");
-		const CuteRPG_Field_B = map.addTilesetImage("CuteRPG_Field_B", "CuteRPG_Field_B");
-		const CuteRPG_Field_C = map.addTilesetImage("CuteRPG_Field_C", "CuteRPG_Field_C");
-		const CuteRPG_Harbor_C = map.addTilesetImage("CuteRPG_Harbor_C", "CuteRPG_Harbor_C");
-		const CuteRPG_Village_B = map.addTilesetImage("CuteRPG_Village_B", "CuteRPG_Village_B");
-		const CuteRPG_Forest_B = map.addTilesetImage("CuteRPG_Forest_B", "CuteRPG_Forest_B");
-		const CuteRPG_Desert_C = map.addTilesetImage("CuteRPG_Desert_C", "CuteRPG_Desert_C");
-		const CuteRPG_Mountains_B = map.addTilesetImage("CuteRPG_Mountains_B", "CuteRPG_Mountains_B");
-		const CuteRPG_Desert_B = map.addTilesetImage("CuteRPG_Desert_B", "CuteRPG_Desert_B");
-		const CuteRPG_Forest_C = map.addTilesetImage("CuteRPG_Forest_C", "CuteRPG_Forest_C");
+		const spawn_tile_loc = {{ persona_init_pos|tojson }};
 
-		let tileset_group_1 = [CuteRPG_Field_B, CuteRPG_Field_C, CuteRPG_Harbor_C, CuteRPG_Village_B,
-			CuteRPG_Forest_B, CuteRPG_Desert_C, CuteRPG_Mountains_B, CuteRPG_Desert_B, CuteRPG_Forest_C,
-			interiors_pt1, interiors_pt2, interiors_pt3, interiors_pt4, interiors_pt5, walls];
-		const bottomGroundLayer = map.createLayer("Bottom Ground", tileset_group_1, 0, 0);
-		const exteriorGroundLayer = map.createLayer("Exterior Ground", tileset_group_1, 0, 0);
-		const exteriorDecorationL1Layer = map.createLayer("Exterior Decoration L1", tileset_group_1, 0, 0);
-		const exteriorDecorationL2Layer = map.createLayer("Exterior Decoration L2", tileset_group_1, 0, 0);
-		const interiorGroundLayer = map.createLayer("Interior Ground", tileset_group_1, 0, 0);
-		const wallLayer = map.createLayer("Wall", [CuteRPG_Field_C, walls], 0, 0);
-		const interiorFurnitureL1Layer = map.createLayer("Interior Furniture L1", tileset_group_1, 0, 0);
-		const interiorFurnitureL2Layer = map.createLayer("Interior Furniture L2 ", tileset_group_1, 0, 0);
-		const foregroundL1Layer = map.createLayer("Foreground L1", tileset_group_1, 0, 0);
-		const foregroundL2Layer = map.createLayer("Foreground L2", tileset_group_1, 0, 0);
+		// 全局 record：每个 agent 的"希望位置"(LLM 决策)，供 update() 平滑移动使用
+		window._agentTarget = window._agentTarget || {};
+		window._agentAction = window._agentAction || {};
+		window._agentLocation = window._agentLocation || {};
+		window._agentLast = window._agentLast || {};
+		window._agentWalkState = window._agentWalkState || {};  // {name: {anim:'walk_left'|'walk_right'|'walk_down'|'walk_up'|null, until:ts}}
+		window._agentWalkFrames = window._agentWalkFrames || {}; // {name: count}
 
-		const collisionsLayer = map.createLayer("Collisions", collisions, 0, 0);
-
-		collisionsLayer.setCollisionByProperty({ collide: true });
-
-		collisionsLayer.setDepth(-1);
-		foregroundL1Layer.setDepth(2);
-		foregroundL2Layer.setDepth(2);
-
-		const canvas = game.canvas;
-		canvas.addEventListener("wheel", (event) => {
-			event.stopPropagation();
-		}, { passive: false, capture: true });
-
-		function add_text(game, x, y, text, background) {
-			res = game.add.text(
-				x,
-				y,
-				text,
-				{
-					font: "24px 黑体",
-					fontWeight: "normal",
-					fill: "#000000",
-					backgroundColor: background,
-					padding: { x: 20, y: 4},
-					align: "left",
-					wordWrap: { width: 1200/zoom, useAdvancedWrap: true },
-				}
-			);
-
-			res.setDepth(10);
-			res.alpha = 0.8;
-			res.setScrollFactor(0);
-
-			return res;
+		for (var name in spawn_tile_loc) {
+			const x = spawn_tile_loc[name][0] * 32 + 16;
+			const y = spawn_tile_loc[name][1] * 32 + 16;
+			const sprite = this.physics.add.sprite(x, y, name, "down").setDepth(2).setScale(1);
+			window._agentTarget[name] = [x, y];
+			window._agentLast[name] = [x, y];
+			personas[name] = sprite;
+			// 名字标签
+			const label = this.add.text(x, y - 24, name, {
+				font: "12px monospace",
+				fill: "#ffffff",
+				backgroundColor: "#222222",
+				padding: { x: 4, y: 2 },
+				align: "center"
+			}).setOrigin(0.5, 1).setDepth(3);
+			pronunciatios[name] = label;
+			// 单击 agent 切换显示 action 浮窗
+			sprite.setInteractive();
+			sprite.on('pointerdown', () => showActionTip(name));
 		}
-
-		posX = 20;
-		posY = 20;
-
-		// Add button: play, pause ...
-		buttonPlay = add_text(this, posX, posY, "[运行]", "#ffffcc");
-		buttonPlay.setInteractive();
-		posX += buttonPlay.width + 10;
-
-		buttonPause = add_text(this, posX, posY, " 暂停 ", "#ffffcc");
-		buttonPause.setInteractive();
-		posX += buttonPause.width + 10;
-
-		buttonShowConversation = add_text(this, posX, posY, "[显示对话]", "#ffffcc");
-		buttonShowConversation.setInteractive();
-		posX += buttonShowConversation.width + 10;
-
-		buttonHideConversation = add_text(this, posX, posY, " 隐藏对话 ", "#ffffcc");
-		buttonHideConversation.setInteractive();
-		posX += buttonHideConversation.width + 10;
-
-		// Show current time
-		currentTime = add_text(this, posX, posY, "", "#ccffcc");
-
-		// Show conversation content
-		textConversation = add_text(this, 20, posY + currentTime.height + 10, " —— ", "#ccffcc");
-
-		// Setup camera
-		player = this.physics.add.sprite(2440, 500, "atlas", "down").setSize(30, 40).setOffset(0, 0);
-		player.setDepth(-1);
-		const camera = this.cameras.main;
-		camera.startFollow(player);
-		camera.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
-		cursors = this.input.keyboard.createCursorKeys();
-
-		// Setup personas
-		// We start by creating the game sprite objects.
-		for (let i=0; i<Object.keys(spawn_tile_loc).length; i++) {
-			let persona_name = Object.keys(spawn_tile_loc)[i];
-			let start_pos = [spawn_tile_loc[persona_name][0] * tile_width + tile_width / 2, spawn_tile_loc[persona_name][1] * tile_width + tile_width];
-			let new_sprite = this.physics.add.sprite(start_pos[0], start_pos[1], persona_name, "down").setSize(30, 40).setOffset(0, 0);
-			// Scale up the sprite
-			new_sprite.displayWidth = 40;
-			new_sprite.scaleY = new_sprite.scaleX;
-
-			// Here, we are creating the persona and its pronunciatio sprites.
-			personas[persona_name] = new_sprite;
-			pronunciatios[persona_name] = this.add.text(
-				new_sprite.body.x - 15,
-				new_sprite.body.y - 15 - 25,
-				"",
-				{
-					font: "18px monospace",
-					fill: "#000000",
-					backgroundColor: "#ffffcc",
-					padding: { x: 4, y: 4},
-					border:"solid",
-					borderRadius:"10px"
-				}
-			).setDepth(3);
-			pronunciatios[persona_name].alpha = 0.7;
-		}
-
-		// Create animations
-		const anims = this.anims;
-		for (let i = 0; i < Object.keys(persona_names).length; i++) {
-			let persona_name = Object.keys(persona_names)[i];
-			let left_walk_name = persona_name + "-left-walk";
-			let right_walk_name = persona_name + "-right-walk";
-			let down_walk_name = persona_name + "-down-walk";
-			let up_walk_name = persona_name + "-up-walk";
-
-			frameRate = 4;
-			if (movement_speed > 1) frameRate = 8;
-
-			anims.create({
-				key: left_walk_name,
-				frames: anims.generateFrameNames(persona_name, { prefix: "left-walk.", start: 0, end: 3, zeroPad: 3 }),
-				frameRate: frameRate,
-				repeat: -1
-			});
-
-			anims.create({
-				key: right_walk_name,
-				frames: anims.generateFrameNames(persona_name, { prefix: "right-walk.", start: 0, end: 3, zeroPad: 3 }),
-				frameRate: frameRate,
-				repeat: -1
-			});
-
-			anims.create({
-				key: down_walk_name,
-				frames: anims.generateFrameNames(persona_name, { prefix: "down-walk.", start: 0, end: 3, zeroPad: 3 }),
-				frameRate: frameRate,
-				repeat: -1
-			});
-
-			anims.create({
-				key: up_walk_name,
-				frames: anims.generateFrameNames(persona_name, { prefix: "up-walk.", start: 0, end: 3, zeroPad: 3 }),
-				frameRate: frameRate,
-				repeat: -1
-			});
-		}
+		this.cameras.main.setBackgroundColor("#9ccef0");
+		this.cameras.main.centerOn(MAP_W/2, MAP_H/2);
 	}
 
-	// Update function
+	// === 平滑移动 + LLM 决策驱动 ===
 	function update(time, delta) {
-		// Setup play and pause button
-		buttonPlay.on("pointerdown", function() {
-			if (finished) return;
-			buttonPlay.text = "[运行]";
-			buttonPause.text = " 暂停 ";
-			paused = false;
-		});
-
-		buttonPause.on("pointerdown", function() {
-			if (finished) return;
-			buttonPlay.text = " 运行 ";
-			buttonPause.text = "[暂停]";
-			paused = true;
-		});
-
-		buttonShowConversation.on("pointerdown", function() {
-			buttonShowConversation.text = "[显示对话]";
-			buttonHideConversation.text = " 隐藏对话 ";
-			textConversation.setVisible(true);
-		});
-
-		buttonHideConversation.on("pointerdown", function() {
-			buttonShowConversation.text = " 显示对话 ";
-			buttonHideConversation.text = "[隐藏对话]";
-			textConversation.setVisible(false);
-		});
-
-		// Move camera
-		const camera_speed = 400;
-		player.body.setVelocity(0);
-		if (cursors.left.isDown) {
-			player.body.setVelocityX(-camera_speed);
-		}
-		if (cursors.right.isDown) {
-			player.body.setVelocityX(camera_speed);
-		}
-		if (cursors.up.isDown) {
-			player.body.setVelocityY(-camera_speed);
-		}
-		if (cursors.down.isDown) {
-			player.body.setVelocityY(camera_speed);
-		}
-
-		let curr_focused_persona = document.getElementById("temp_focus").textContent;
-		if (curr_focused_persona != "") {
-			player.body.x = personas[curr_focused_persona].body.x;
-			player.body.y = personas[curr_focused_persona].body.y;
-			document.getElementById("temp_focus").innerHTML = "";
-		}
-
-		if (finished || paused) {
-			return;
-		}
-
-		curr_datetime = new Date(start_datetime.getTime());
-		curr_year = curr_datetime.getFullYear().toString().padStart(4, "0");
-		curr_month = (curr_datetime.getMonth() + 1).toString().padStart(2, "0");
-		curr_day = curr_datetime.getDate().toString().padStart(2, "0");
-		curr_hour = curr_datetime.getHours().toString().padStart(2, "0");
-		curr_minute = curr_datetime.getMinutes().toString().padStart(2, "0");
-		conversation_key = `${curr_year}${curr_month}${curr_day}-${curr_hour}:${curr_minute}`;
-		conversation_key_text = all_movement["conversation"][conversation_key];
-		if (conversation_key_text && conversation_key_text != "") {
-			textConversation.setText(`\n${conversation_key} 对话记录：\n` + conversation_key_text);
-		}
-
-		// Moving personas
-		for (let i = 0; i < Object.keys(personas).length; i++) {
-			let curr_persona_name = Object.keys(personas)[i];
-			let curr_persona = personas[curr_persona_name];
-			let curr_pronunciatio = pronunciatios[Object.keys(personas)[i]];
-
-			if (step in all_movement) {
-				if (curr_persona_name.replace("_", " ") in all_movement[step]) {
-					if (execute_count == execute_count_max) {
-						let curr_x = all_movement[step][curr_persona_name.replace("_", " ")]["movement"][0];
-						let curr_y = all_movement[step][curr_persona_name.replace("_", " ")]["movement"][1];
-						movement_target[curr_persona_name] = [curr_x * tile_width, curr_y * tile_width];
-
-						let action = all_movement[step][curr_persona_name.replace("_", " ")]["action"];
-
-						let act = action;
-						act = act.length > 25 ? act.substring(0, 20)+"..." : act;
-						pronunciatios[curr_persona_name].setText(curr_persona_name + ": " + act);
-
-						// Updating the status of each personas
-						document.getElementById("agent_desc__"+curr_persona_name).innerHTML = all_movement["description"][curr_persona_name]["currently"];
-						document.getElementById("current_action__"+curr_persona_name).innerHTML = action;
-						document.getElementById("target_address__"+curr_persona_name).innerHTML = all_movement[step][curr_persona_name.replace("_", " ")]["location"];
-					}
-
-					if (execute_count > 0) {
-						if (curr_persona.body.x < movement_target[curr_persona_name][0]) {
-							curr_persona.body.x += movement_speed;
-							anims_direction = "r";
-							pre_anims_direction = "r";
-							pre_anims_direction_dict[curr_persona_name] = "r";
-						} else if (curr_persona.body.x > movement_target[curr_persona_name][0]) {
-							curr_persona.body.x -= movement_speed;
-							anims_direction = "l";
-							pre_anims_direction = "l";
-							pre_anims_direction_dict[curr_persona_name] = "l";
-						} else if (curr_persona.body.y < movement_target[curr_persona_name][1]) {
-							curr_persona.body.y += movement_speed;
-							anims_direction = "d";
-							pre_anims_direction = "d";
-							pre_anims_direction_dict[curr_persona_name] = "d";
-						} else if (curr_persona.body.y > movement_target[curr_persona_name][1]) {
-							curr_persona.body.y -= movement_speed;
-							anims_direction = "u";
-							pre_anims_direction = "u";
-							pre_anims_direction_dict[curr_persona_name] = "u";
-						} else {
-							anims_direction = "";
-						}
-
-						curr_pronunciatio.x = curr_persona.body.x - 15;
-						curr_pronunciatio.y = curr_persona.body.y - 15 - 25;
-
-						let left_walk_name = curr_persona_name + "-left-walk";
-						let right_walk_name = curr_persona_name + "-right-walk";
-						let down_walk_name = curr_persona_name + "-down-walk";
-						let up_walk_name = curr_persona_name + "-up-walk";
-
-						if (anims_direction == "l") {
-							curr_persona.anims.play(left_walk_name, true);
-						} else if (anims_direction == "r") {
-							curr_persona.anims.play(right_walk_name, true);
-						} else if (anims_direction == "u") {
-							curr_persona.anims.play(up_walk_name, true);
-						} else if (anims_direction == "d") {
-							curr_persona.anims.play(down_walk_name, true);
-						}
-					}
+		const speed = 60;  // 像素/秒
+		const stepPx = Math.max(1, Math.round(speed * delta / 1000));
+		for (const name of Object.keys(personas)) {
+			const sprite = personas[name];
+			const tx = (window._agentTarget[name] && window._agentTarget[name][0]) || sprite.x;
+			const ty = (window._agentTarget[name] && window._agentTarget[name][1]) || sprite.y;
+			const dx = tx - sprite.x;
+			const dy = ty - sprite.y;
+			const dist = Math.sqrt(dx*dx + dy*dy);
+			if (dist > 1) {
+				// 走
+				const nx = dist <= stepPx ? tx : sprite.x + (dx/dist) * stepPx;
+				const ny = dist <= stepPx ? ty : sprite.y + (dy/dist) * stepPx;
+				sprite.setPosition(nx, ny);
+				if (Math.abs(dx) > Math.abs(dy)) {
+					sprite.anims.play(name + (dx > 0 ? '-right-walk' : '-left-walk'), true);
+				} else {
+					sprite.anims.play(name + (dy > 0 ? '-down-walk' : '-up-walk'), true);
 				}
 			} else {
-				if (pre_anims_direction_dict[curr_persona_name] == "l") curr_persona.setTexture(curr_persona_name, "left");
-				else if (pre_anims_direction_dict[curr_persona_name] == "r") curr_persona.setTexture(curr_persona_name, "right");
-				else if (pre_anims_direction_dict[curr_persona_name] == "u") curr_persona.setTexture(curr_persona_name, "up");
-				else if (pre_anims_direction_dict[curr_persona_name] == "d") curr_persona.setTexture(curr_persona_name, "down");
-				curr_persona.anims.stop();
-
-				finished = true;
-				buttonPlay.text = "[回放结束]";
-				buttonPause.setVisible(false);
+				// 停下
+				sprite.anims.stop();
+				const frameName = lastDir[name] || 'down';
+				sprite.setTexture(name, frameName);
+			}
+			// 名字标签跟随
+			if (pronunciatios[name]) {
+				pronunciatios[name].setPosition(sprite.x, sprite.y - 18);
 			}
 		}
+	}
 
-		if (execute_count == 0) {
-			for (let i = 0; i < Object.keys(personas).length; i++) {
-				let curr_persona_name = Object.keys(personas)[i];
-				let curr_persona = personas[curr_persona_name];
-				if (window.LIVE_MODE && window.liveTarget[curr_persona_name]) {
-					// LIVE: 每帧尽量把 agent 拉向最新 LLM 决策位置（瞬移感 + 快速错位过渡）
-					const tx = window.liveTarget[curr_persona_name][0];
-					const ty = window.liveTarget[curr_persona_name][1];
-					const dx = tx - curr_persona.body.x;
-					const dy = ty - curr_persona.body.y;
-					if (Math.abs(dx) > movement_speed) {
-						curr_persona.body.x += Math.sign(dx) * movement_speed;
-						curr_persona.anims.play(curr_persona_name + (dx > 0 ? '-right-walk' : '-left-walk'), true);
-					} else if (Math.abs(dy) > movement_speed) {
-						curr_persona.body.y += Math.sign(dy) * movement_speed;
-						curr_persona.anims.play(curr_persona_name + (dy > 0 ? '-down-walk' : '-up-walk'), true);
-					} else {
-						curr_persona.body.x = tx;
-						curr_persona.body.y = ty;
-						curr_persona.anims.stop();
-					}
-				} else {
-					curr_persona.body.x = movement_target[curr_persona_name][0];
-					curr_persona.body.y = movement_target[curr_persona_name][1];
+	// === 真正的实时数据源：SSE ===
+	let _lastStep = null;
+	// 处理一帧movement
+	function applyMovement(data) {
+		if (data.type === 'init' && data.movement) {
+			// 首次：把最后的 frame 给所有 agent
+			for (const a of Object.keys(data.movement)) {
+				const f = data.movement[a];
+				if (f && f.movement) {
+					window._agentTarget[a] = [f.movement[0]*32, f.movement[1]*32];
+					window._agentAction[a] = f.action || '';
+					window._agentLocation[a] = f.location || '';
 				}
 			}
-			execute_count = execute_count_max + 1;
-			step = step + 1;
-
-			start_datetime = new Date(start_datetime.getTime() + step_size);
-			currentTime.setText(start_datetime.toLocaleTimeString("zh-CN", datetime_options));
+		} else if (data.type === 'step' && data.movement) {
+			// 新 step
+			for (const a of Object.keys(data.movement)) {
+				const f = data.movement[a];
+				if (f && f.movement) {
+					const newX = f.movement[0]*32, newY = f.movement[1]*32;
+					if (window._agentTarget[a]) {
+						window._agentLast[a] = window._agentTarget[a];
+					}
+					window._agentTarget[a] = [newX, newY];
+					window._agentAction[a] = f.action || '';
+					window._agentLocation[a] = f.location || '';
+				}
+			}
 		}
-
-		execute_count -= 1;
 	}
-</script>
 
-<!-- LIVE MODE: 每 10 秒拉取最新 LLM 决策位置 -->
-<script>
-(function() {
-    if (!window.LIVE_MODE || !window.NAME) return;
-    async function pollLive() {
-        try {
-            const r = await fetch('/api/latest_step.json?name=' + encodeURIComponent(window.NAME), {cache: 'no-store'});
-            if (!r.ok) return;
-            const data = await r.json();
-            if (!data.steps || data.steps.length === 0) return;
-            const latestKey = data.steps[data.steps.length - 1];
-            const frame = data.movement[latestKey];
-            if (!frame) return;
-            for (const agentName of Object.keys(frame)) {
-                const f = frame[agentName];
-                if (!f || !f.movement) continue;
-                const x = f.movement[0] * window.tile_width;
-                const y = f.movement[1] * window.tile_width;
-                window.liveTarget[agentName] = [x, y];
-                window.liveAction[agentName] = f.action;
-                window.liveLocation[agentName] = f.location;
-                if (document.getElementById("current_action__" + agentName)) {
-                    document.getElementById("current_action__" + agentName).innerHTML = f.action;
-                    document.getElementById("target_address__" + agentName).innerHTML = f.location;
-                }
-            }
-        } catch (e) { /* 静默 */ }
-    }
-    pollLive();
-    setInterval(pollLive, 10000);
-})();
+	let _sseOk = false;
+	function startSSE() {
+		if (!window.NAME) return;
+		try {
+			const es = new EventSource('/api/stream?name=' + encodeURIComponent(window.NAME));
+			es.onmessage = (ev) => {
+				try { _sseOk = true; applyMovement(JSON.parse(ev.data)); } catch (e) {}
+			};
+			let _errCount = 0;
+			es.onerror = () => {
+				_errCount++;
+				// 如果 1 秒内没收到数据 fallback 到 1 秒轮询
+				if (_errCount >= 1) {
+					try { es.close(); } catch(e){}
+					startPolling();
+				}
+			};
+		} catch (e) { startPolling(); }
+	}
+
+	function startPolling() {
+		// 初始一次立即拉
+		let _lastStep = null;
+		async function pull() {
+			try {
+				const r = await fetch('/api/latest_step.json?name=' + encodeURIComponent(window.NAME), {cache: 'no-store'});
+				if (!r.ok) return;
+				const data = await r.json();
+				if (data.latest_key && data.latest_key !== _lastStep) {
+					_lastStep = data.latest_key;
+					const frame = data.movement[data.latest_key];
+					if (frame) applyMovement({type: 'step', movement: frame});
+				}
+			} catch (e) {}
+		}
+		pull();
+		setInterval(pull, 1000);  // 1 秒轮询 — 几乎跟实时一样
+	}
+
+	// 鼠标 hover 显示 action tip
+	function showActionTip(name) {
+		const tip = document.getElementById('action-tooltip');
+		if (!tip) return;
+		document.getElementById('tip-name').textContent = name;
+		document.getElementById('tip-action').textContent = window._agentAction[name] || '(无)';
+		document.getElementById('tip-loc').textContent = window._agentLocation[name] || '';
+		tip.style.display = 'block';
+		setTimeout(() => { tip.style.display = 'none'; }, 6000);
+	}
+
+	// 控制按钮
+	document.addEventListener('DOMContentLoaded', () => {
+		const slider = document.getElementById('zoom-slider');
+		const val = document.getElementById('zoom-val');
+		if (slider) {
+			const cur = new URLSearchParams(location.search);
+			if (cur.has('zoom')) {
+				const z = parseFloat(cur.get('zoom'));
+				if (!isNaN(z) && z >= 0.3 && z <= 2.5) { slider.value = z; val.textContent = z.toFixed(2)+'x'; }
+			}
+			slider.addEventListener('input', () => { val.textContent = parseFloat(slider.value).toFixed(2)+'x'; });
+			slider.addEventListener('change', () => {
+				const url = new URL(location.href);
+				url.searchParams.set('zoom', slider.value);
+				location.href = url.toString();
+			});
+		}
+		const toggle = document.getElementById('persona-toggle');
+		if (toggle) {
+			toggle.addEventListener('click', () => {
+				for (const n of Object.keys(pronunciatios)) {
+					pronunciatios[n].visible = !pronunciatios[n].visible;
+				}
+				toggle.textContent = toggle.textContent.includes('隐藏') ? '🔠 显示名字' : '🔠 隐藏名字';
+			});
+		}
+		startSSE();  // 失败会 fallback 到 1s 轮询
+	});
+</script>
 </script>

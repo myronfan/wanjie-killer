@@ -1,124 +1,42 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div id="game-container" style="text-align: center"></div>
+<div id="game-container" style="text-align: center; background:#1a1a1a; min-height:600px"></div>
 
-<!-- 实时状态条 -->
-<div id="live-bar" style="background:#222;color:#fff;padding:8px 12px;font-family:monospace;font-size:13px;display:flex;gap:14px;align-items:center;justify-content:space-between;border-radius:5px;margin:8px 0;">
-    <span>📡 当前数据最后更新: <span id="live-mtime" style="color:#7fd">加载中…</span></span>
-    <span>📦 文件大小: <span id="live-size" style="color:#7fd">--</span></span>
-        <span>🎯 最新 step: <span id="live-step" style="color:#7fd">--</span></span>
-    <span>🕒 服务器时间: <span id="live-now" style="color:#7fd">--</span></span>
-    <button id="live-reload" type="button" style="background:#5a9;color:#fff;border:0;padding:6px 14px;border-radius:4px;cursor:pointer;">🔄 重新加载</button>
-    <label style="display:flex;gap:6px;align-items:center;color:#7fd;">🔍 缩放 <input id="zoom-slider" type="range" min="0.2" max="3" step="0.1" value="1.4" style="width:120px"></label>
-    <span id="zoom-val" style="color:#fff;min-width:38px;">1.4x</span>
+<!-- 实时控制条：只有缩放 -->
+<div style="position:fixed;top:8px;right:8px;z-index:100;background:rgba(0,0,0,0.7);color:#fff;padding:8px 12px;border-radius:6px;font-family:monospace;font-size:12px;display:flex;gap:10px;align-items:center;">
+    <span>🔍</span>
+    <input id="zoom-slider" type="range" min="0.3" max="2.5" step="0.05" value="0.6" style="width:110px">
+    <span id="zoom-val" style="min-width:40px;">0.60x</span>
+    <button id="persona-toggle" type="button" style="background:#444;color:#fff;border:0;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:11px;">🔠 隐藏名字</button>
 </div>
 
-<script>
-(function() {
-    const mtimeEl = document.getElementById('live-mtime');
-    const sizeEl = document.getElementById('live-size');
-    const nowEl = document.getElementById('live-now');
-    const btn = document.getElementById('live-reload');
-    const NAME = new URLSearchParams(location.search).get('name') || '';
-    let lastMtime = null;
-    let reloadScheduled = false;
+<!-- 当前 action tooltip（agent 上方始终显示一个，鼠标 hover 切换）-->
+<div id="action-tooltip" style="position:fixed;bottom:8px;left:8px;z-index:100;background:rgba(0,0,0,0.85);color:#fff;padding:8px 14px;border-radius:6px;font-family:monospace;font-size:13px;max-width:500px;display:none;">
+    <div style="color:#7fd;">📍 <span id="tip-name">--</span></div>
+    <div style="color:#ccc;">💭 <span id="tip-action">--</span></div>
+    <div style="color:#888;font-size:11px;">@ <span id="tip-loc">--</span></div>
+</div>
 
-    function fmtTime(ts) {
-        return new Date(ts * 1000).toLocaleTimeString('zh-CN');
-    }
-
-    async function pollStatus() {
-        if (!window.NAME) return;
-        try {
-            const r = await fetch('/api/status.json?name=' + encodeURIComponent(window.NAME), {cache: 'no-store'});
-            if (!r.ok) return;
-            const data = await r.json();
-            if (data.has_data) {
-                mtimeEl.textContent = fmtTime(data.mtime);
-                sizeEl.textContent = (data.size / 1024).toFixed(1) + ' KB';
-                if (lastMtime !== null && data.mtime > lastMtime && !reloadScheduled) {
-                    // 新数据来了，2 秒后自动 reload
-                    reloadScheduled = true;
-                    mtimeEl.style.color = '#ff6';
-                    setTimeout(() => { window.location.reload(); }, 2000);
-                }
-                lastMtime = data.mtime;
-            } else {
-                mtimeEl.textContent = '(尚无数据)';
-            }
-        } catch (e) { /* 静默 */ }
-    }
-
-    async function tickClock() {
-        try {
-            const r = await fetch('/api/health');
-            const data = await r.json();
-            nowEl.textContent = new Date(data.iso).toLocaleTimeString('zh-CN');
-        } catch (e) { nowEl.textContent = '--'; }
-    }
-
-    btn.addEventListener('click', () => window.location.reload());
-
-    // zoom 滑块
-    const zSlider = document.getElementById('zoom-slider');
-    const zVal = document.getElementById('zoom-val');
-    const cur = new URLSearchParams(location.search);
-    if (cur.has('zoom')) {
-        const z = parseFloat(cur.get('zoom'));
-        if (!isNaN(z) && z >= 0.2 && z <= 3) {
-            zSlider.value = z; zVal.textContent = z.toFixed(1) + 'x';
-        }
-    }
-    zSlider.addEventListener('input', () => { zVal.textContent = parseFloat(zSlider.value).toFixed(1) + 'x'; });
-    zSlider.addEventListener('change', () => {
-        const url = new URL(location.href);
-        url.searchParams.set('zoom', zSlider.value);
-        location.href = url.toString();
-    });
-
-    pollStatus(); tickClock();
-
-    // LIVE: 显示当前 agent 位置变化（10 秒一次）
-    async function pollLive() {
-        if (!window.NAME) return;
-        try {
-            const r = await fetch('/api/latest_step.json?name=' + encodeURIComponent(window.NAME), {cache: 'no-store'});
-            if (!r.ok) return;
-            const data = await r.json();
-            if (data.latest_key) {
-                const el = document.getElementById('live-step');
-                if (el) el.textContent = '#' + data.latest_key;
-            }
-        } catch (e) { /* 静默 */ }
-    }
-    pollLive();
-    setInterval(pollLive, 10000);
-    setInterval(pollStatus, 15000);  // 15 秒轮询一次（轻量）
-    setInterval(tickClock, 5000);
-})();
-</script>
 <div>
     <div class="row">
-        <div class="col-md-12" style="border: solid; padding: 1em; padding-left:2em; padding-right:2em; border-radius: 5px;">
-            <div class="row" style="display: flex; flex-wrap: wrap; margin: -0.5em;">
-                {% for p in persona_names %}
-                <div style="text-align: center; margin: 0.5em;">
-                    <a href="javascript:void(0);" id="on_screen_det_trigger-{{ p }}">
-                        <div style="padding: 0;">
-                            {% set image_static = 'assets/village/agents/' ~ p ~ '/portrait.png' %}
-                            <img src="{{ url_for('static', filename=image_static) }}" style="width: 32px; padding: 0;">
-                            <br>
-                            {{ p }}
-                        </div>
-                    </a>
-                </div>
-                {% endfor %}
+        <div class="col-md-12" style="border: solid; padding: 1em; padding-left:2em; padding-right:2em; border-radius: 5px;display:none">
+            {% for p in persona_names %}
+            <div style="text-align: center; margin: 0.5em;">
+                <a href="javascript:void(0);" id="on_screen_det_trigger-{{ p }}">
+                    <div style="padding: 0;">
+                        {% set image_static = 'assets/village/agents/' ~ p ~ '/portrait.png' %}
+                        <img src="{{ url_for('static', filename=image_static) }}" style="width: 32px; padding: 0;">
+                        <br>
+                        {{ p }}
+                    </div>
+                </a>
             </div>
+            {% endfor %}
         </div>
     </div>
 
-    <div class="media" id="on_screen_det_content-init" style="background-color:#EEEEEE; padding:1em; padding-left:2em; padding-right:2em; border-radius:5px; ">
+    <div class="media" id="on_screen_det_content-init" style="background-color:#EEEEEE; padding:1em; padding-left:2em; padding-right:2em; border-radius:5px;display:none;">
         <em>点击角色可查看更多细节。</em>
     </div>
 
@@ -144,38 +62,4 @@
 {% block js_content %}
 <script src='https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.js'></script>
 {% include 'main_script.html' %}
-<script>
-{% for p in persona_names %}
-    $('#on_screen_det_trigger-{{ p }}').click(function() {
-        $('#on_screen_det_content-init').css({
-          'display': 'none',
-        });
-        {% for p_i in persona_names %}
-            $('#on_screen_det_content-{{p_i}}').css({
-                'display': 'none',
-            });
-            $('#on_screen_det_trigger-{{p_i}}').css({
-                'font-weight': '500',
-            });
-            $('#on_screen_det_trigger_container-{{p_i}}').css({
-                'background-color': 'white',
-                'border-radius': '10px'
-            });
-        {% endfor %}
-
-        $('#on_screen_det_trigger-{{ p }}').css({
-            'font-weight': '900',
-        });
-        $('#on_screen_det_trigger_container-{{ p }}').css({
-            'background-color': '#ABFF84',
-            'border-radius': '10px'
-        });
-        $('#on_screen_det_content-{{ p }}').css({
-            'display': 'block',
-        });
-
-        document.getElementById("temp_focus").innerHTML = "{{ p }}";
-    });
-{% endfor %}
-</script>
 {% endblock js_content %}
