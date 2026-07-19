@@ -62,22 +62,39 @@ class SimulateServer:
         self.start_step = start_step
 
     def simulate(self, step, stride=0):
+        from concurrent.futures import ThreadPoolExecutor, as_completed
         timer = utils.get_timer()
+        agent_names = list(self.agent_status.keys())
+        # 并行度：默认 min(agent 数量, 10)。因为 LLM miniMax 支持 ~10 并发
+        max_workers = min(max(1, len(agent_names)), getattr(self, "max_workers", 10))
         for i in range(self.start_step, self.start_step + step):
             title = "Simulate Step[{}/{}, time: {}]".format(i+1, self.start_step + step, timer.get_date())
             self.logger.info("\n" + utils.split_line(title, "="))
-            for name, status in self.agent_status.items():
-                plan = self.game.agent_think(name, status)["plan"]
+            self.logger.info(f"[PARALLEL] running {len(agent_names)} agent_think() with max_workers={max_workers}")
+
+            def _one(name):
+                status = self.agent_status[name]
+                try:
+                    plan = self.game.agent_think(name, status)["plan"]
+                except Exception as e:
+                    self.logger.error(f"agent_think({name}) outer fail: {e}")
+                    return name, None
                 agent = self.game.get_agent(name)
                 if name not in self.config["agents"]:
                     self.config["agents"][name] = {}
                 self.config["agents"][name].update(agent.to_dict())
                 if plan.get("path"):
                     status["coord"], status["path"] = plan["path"][-1], []
-                self.config["agents"][name].update(
-                    # {"coord": status["coord"], "path": plan["path"]}
-                    {"coord": status["coord"]}
-                )
+                self.config["agents"][name].update({"coord": status["coord"]})
+                return name, plan
+
+            with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                futures = [ex.submit(_one, n) for n in agent_names]
+                for f in as_completed(futures):
+                    try:
+                        n, _p = f.result(timeout=900)
+                    except Exception as e:
+                        self.logger.error(f"[PARALLEL] {f} caused {e}")
 
             sim_time = timer.get_date("%Y%m%d-%H:%M")
             self.config.update(
@@ -161,6 +178,7 @@ parser.add_argument("--loop", action="store_true", help="Run in live loop mode (
 parser.add_argument("--stride", type=int, default=10, help="The step stride in minute")
 parser.add_argument("--verbose", type=str, default="debug", help="The verbose level")
 parser.add_argument("--log", type=str, default="", help="Name of the log file")
+parser.add_argument("--workers", type=int, default=10, help="Max parallel agent think threads (LLM concurrency)")
 if __name__ == "__main__":
     args = parser.parse_args()
     checkpoints_path = "results/checkpoints"
@@ -193,6 +211,7 @@ if __name__ == "__main__":
     static_root = "frontend/static"
 
     server = SimulateServer(name, static_root, checkpoints_folder, sim_config, start_step, args.verbose, args.log)
+    server.max_workers = max(1, args.workers)
     if getattr(args, "loop", False):
         per_loop = max(1, args.step)
         import time as _time
