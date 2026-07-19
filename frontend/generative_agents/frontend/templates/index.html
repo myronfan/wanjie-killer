@@ -29,9 +29,9 @@
     }
 
     async function pollStatus() {
-        if (!NAME) return;
+        if (!window.NAME) return;
         try {
-            const r = await fetch('/api/status.json?name=' + encodeURIComponent(NAME), {cache: 'no-store'});
+            const r = await fetch('/api/status.json?name=' + encodeURIComponent(window.NAME), {cache: 'no-store'});
             if (!r.ok) return;
             const data = await r.json();
             if (data.has_data) {
@@ -81,9 +81,9 @@
 
     // LIVE: 显示当前 agent 位置变化（10 秒一次）
     async function pollLive() {
-        if (!NAME) return;
+        if (!window.NAME) return;
         try {
-            const r = await fetch('/api/latest_step.json?name=' + encodeURIComponent(NAME), {cache: 'no-store'});
+            const r = await fetch('/api/latest_step.json?name=' + encodeURIComponent(window.NAME), {cache: 'no-store'});
             if (!r.ok) return;
             const data = await r.json();
             if (data.latest_key) {
